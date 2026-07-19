@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Nya Modify Header",
+  "version": "1.2.0",
+  "description": "A local, auditable request and response header rule manager.",
+  "minimum_chrome_version": "102",
+  "permissions": [
+    "storage",
+    "declarativeNetRequestWithHostAccess",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "options_page": "manager.html",
+  "action": {
+    "default_title": "Nya Modify Header",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "32": "assets/icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  }
+}

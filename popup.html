@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nya Header</title>
+    <link rel="stylesheet" href="src/popup.css">
+  </head>
+  <body>
+    <div class="popup-shell">
+      <header class="topbar">
+        <img src="assets/icon-32.png" width="30" height="30" alt="">
+        <div class="site-copy">
+          <h1 id="siteName">正在读取当前网站</h1>
+          <p id="siteStatus">请稍候...</p>
+        </div>
+        <label class="switch-control" title="暂停或启用全部规则">
+          <span class="sr-only">启用全部规则</span>
+          <input id="globalToggle" type="checkbox" role="switch" disabled>
+          <span class="switch-track" aria-hidden="true"></span>
+        </label>
+        <button id="openManagerButton" class="icon-button" type="button" aria-label="打开全部规则管理" title="管理全部规则">
+          <svg class="icon" aria-hidden="true"><use href="#icon-settings"></use></svg>
+        </button>
+      </header>
+
+      <div id="pausedBanner" class="status-banner paused" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-pause-circle"></use></svg>
+        所有规则已暂停
+      </div>
+
+      <div id="permissionBanner" class="permission-banner" hidden>
+        <div>
+          <strong>尚未授权网站访问</strong>
+          <span>规则只会在授权后运行。</span>
+        </div>
+        <button id="grantAccessButton" class="button small primary" type="button">授权</button>
+      </div>
+
+      <div id="unsupportedBanner" class="unsupported-banner" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-shield-alert"></use></svg>
+        <div>
+          <strong>此页面不支持修改</strong>
+          <span>Chrome 内部页和扩展页不能应用 Header 规则。</span>
+        </div>
+      </div>
+
+      <main class="rules-region" aria-live="polite">
+        <div class="section-heading">
+          <span>当前页面相关规则</span>
+          <span id="matchedCount">0 条</span>
+        </div>
+        <div id="rulesList" class="rules-list"></div>
+        <div id="emptyState" class="empty-state" hidden>
+          <div class="empty-icon" aria-hidden="true">
+            <svg class="icon"><use href="#icon-sliders"></use></svg>
+          </div>
+          <h2 id="emptyTitle">当前网站没有相关规则</h2>
+          <p id="emptyText">这里只显示网址模式匹配当前页面的规则。</p>
+        </div>
+      </main>
+
+      <footer class="popup-footer">
+        <button id="newSiteRuleButton" class="button primary" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+          为此网站新建
+        </button>
+        <button id="manageAllButton" class="button secondary" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#icon-list-settings"></use></svg>
+          管理全部规则
+        </button>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.1-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.1-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.1.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.1.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+      <symbol id="icon-list-settings" viewBox="0 0 24 24"><path d="M3 6h10"></path><path d="M3 12h7"></path><path d="M3 18h7"></path><path d="M17 15.5V14"></path><path d="M17 22v-1.5"></path><path d="M14 18h-1.5"></path><path d="M21.5 18H20"></path><path d="m19.5 15.5-1 1"></path><path d="m15.5 19.5-1 1"></path><path d="m19.5 20.5-1-1"></path><path d="m15.5 16.5-1-1"></path><circle cx="17" cy="18" r="2"></circle></symbol>
+      <symbol id="icon-pause-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M10 9v6"></path><path d="M14 9v6"></path></symbol>
+      <symbol id="icon-shield-alert" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.3-2.7a1.1 1.1 0 0 1 1.4 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></symbol>
+      <symbol id="icon-external-link" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></symbol>
+    </svg>
+    <script type="module" src="src/popup.js"></script>
+  </body>
+</html>

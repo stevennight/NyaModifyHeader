@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>规则管理 - Nya Header</title>
+    <link rel="stylesheet" href="src/manager.css">
+  </head>
+  <body>
+    <div class="manager-shell">
+      <header class="appbar">
+        <div class="brand">
+          <img src="assets/icon-48.png" width="36" height="36" alt="">
+          <div>
+            <h1>Nya Header</h1>
+            <p>规则管理</p>
+          </div>
+        </div>
+        <div class="appbar-actions">
+          <button id="permissionButton" class="button secondary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-shield-check"></use></svg>
+            <span>检查网站权限</span>
+          </button>
+          <button id="importButton" class="button secondary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+            导入
+          </button>
+          <button id="exportButton" class="button secondary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+            导出
+          </button>
+          <div class="global-control">
+            <span>全部规则</span>
+            <label class="switch-control" title="暂停或启用全部规则">
+              <span class="sr-only">启用全部规则</span>
+              <input id="globalToggle" type="checkbox" role="switch" disabled>
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
+      </header>
+
+      <div id="pausedBanner" class="status-banner paused" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-pause-circle"></use></svg>
+        所有动态规则已暂停，单条规则的启用状态会保留。
+      </div>
+
+      <main class="workspace">
+        <aside id="listPanel" class="list-panel" aria-label="全部规则">
+          <div class="list-heading">
+            <div>
+              <h2>全部规则</h2>
+              <p id="ruleCount">正在读取...</p>
+            </div>
+            <button id="addRuleButton" class="button primary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+              新建
+            </button>
+          </div>
+          <div class="list-tools">
+            <label class="search-box" for="searchInput">
+              <svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>
+              <input id="searchInput" type="search" placeholder="搜索名称、Header 或网址" autocomplete="off">
+            </label>
+            <div class="filter-tabs" role="tablist" aria-label="按修改对象筛选">
+              <button class="filter-tab active" type="button" role="tab" aria-selected="true" data-filter="all">全部</button>
+              <button class="filter-tab" type="button" role="tab" aria-selected="false" data-filter="request">请求</button>
+              <button class="filter-tab" type="button" role="tab" aria-selected="false" data-filter="response">响应</button>
+            </div>
+          </div>
+          <div id="rulesList" class="rules-list" aria-live="polite"></div>
+          <div id="listEmpty" class="list-empty" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#icon-sliders"></use></svg>
+            <h3 id="listEmptyTitle">还没有规则</h3>
+            <p id="listEmptyText">新建一条规则开始配置。</p>
+          </div>
+        </aside>
+
+        <section class="editor-panel" aria-labelledby="editorTitle">
+          <div id="editorEmpty" class="editor-empty">
+            <div class="empty-symbol" aria-hidden="true"><svg class="icon"><use href="#icon-list-settings"></use></svg></div>
+            <h2>选择一条规则</h2>
+            <p>从左侧打开规则，或新建一条规则。</p>
+          </div>
+
+          <div id="editorView" class="editor-view" hidden>
+            <header class="editor-header">
+              <button id="mobileBackButton" class="icon-button mobile-back" type="button" aria-label="返回规则列表" title="返回规则列表">
+                <svg class="icon" aria-hidden="true"><use href="#icon-arrow-left"></use></svg>
+              </button>
+              <div>
+                <h2 id="editorTitle" tabindex="-1">新建规则</h2>
+                <p id="editorSubtitle">一条规则可以匹配多个网址</p>
+              </div>
+              <button id="editorDeleteButton" class="icon-button danger" type="button" aria-label="删除当前规则" title="删除规则" hidden>
+                <svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg>
+              </button>
+            </header>
+
+            <form id="ruleForm" class="rule-form" novalidate>
+              <div id="formError" class="form-error" role="alert" hidden></div>
+              <div class="form-grid">
+                <div class="field-group span-2">
+                  <label for="ruleName">规则名称 <span class="optional">可选</span></label>
+                  <input id="ruleName" name="name" type="text" maxlength="80" placeholder="例如：本地 API 调试" autocomplete="off">
+                  <p class="field-error" data-error-for="name"></p>
+                </div>
+
+                <div class="field-group span-2">
+                  <div class="label-row">
+                    <label id="headerChangesLabel">Header 修改项</label>
+                    <span id="headerChangesCount">1 项</span>
+                  </div>
+                  <div id="headerChangesList" class="header-changes-list" role="group" aria-labelledby="headerChangesLabel"></div>
+                  <button id="addHeaderChangeButton" class="button secondary small-add" type="button">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    添加 Header 修改
+                  </button>
+                  <p class="field-help">每项可以独立选择请求/响应、操作和 Header；一条规则最多 20 项。</p>
+                  <p class="field-error" data-error-for="headerChanges"></p>
+                </div>
+
+                <div id="sensitiveWarning" class="inline-warning span-2" hidden>
+                  <svg class="icon" aria-hidden="true"><use href="#icon-triangle-alert"></use></svg>
+                  <span>修改项中包含敏感 Header。值会以明文保存在当前 Chrome 配置中，请确认使用范围。</span>
+                </div>
+
+                <fieldset class="field-group span-2">
+                  <legend>网址匹配方式</legend>
+                  <div class="segmented-control match-control">
+                    <input id="matchWildcard" type="radio" name="matchType" value="wildcard" checked>
+                    <label for="matchWildcard">通配符</label>
+                    <input id="matchRegex" type="radio" name="matchType" value="regex">
+                    <label for="matchRegex">正则表达式</label>
+                    <input id="matchDnr" type="radio" name="matchType" value="dnr">
+                    <label id="matchDnrLabel" for="matchDnr" hidden>旧版 DNR</label>
+                  </div>
+                  <p id="matchTypeHelp" class="field-help">使用 <code>*</code> 匹配任意字符，例如 <code>*://*.example.com/*</code>。</p>
+                  <p class="field-error" data-error-for="matchType"></p>
+                </fieldset>
+
+                <div class="field-group span-2">
+                  <div class="label-row">
+                    <label for="sitePatterns">网址模式</label>
+                    <span id="patternCount">0 个模式 · 所有网站</span>
+                  </div>
+                  <textarea id="sitePatterns" name="sitePatterns" rows="5" maxlength="22000" placeholder="每行一个，例如：&#10;https://api.example.com/*&#10;*://*.example.org/*" spellcheck="false"></textarea>
+                  <p class="field-help">每行一个模式，最多 20 个；留空代表所有已授权网站。</p>
+                  <p class="field-error" data-error-for="sitePatterns"></p>
+                </div>
+
+                <details class="advanced-panel span-2">
+                  <summary>
+                    <span>高级选项</span>
+                    <svg class="icon" aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+                  </summary>
+                  <div class="advanced-grid">
+                    <div class="field-group span-2">
+                      <label for="excludedSitePatterns">排除网址模式 <span class="optional">可选，每行一个</span></label>
+                      <textarea id="excludedSitePatterns" name="excludedSitePatterns" rows="3" maxlength="22000" placeholder="例如：*://*.example.com/private/*" spellcheck="false"></textarea>
+                      <p class="field-help">命中任一排除模式时，规则不会运行。</p>
+                      <p class="field-error" data-error-for="excludedSitePatterns"></p>
+                    </div>
+
+                    <fieldset class="field-group span-2">
+                      <legend>资源类型</legend>
+                      <label class="check-row all-resources"><input id="allResources" type="checkbox" checked> 全部资源类型</label>
+                      <div id="resourceTypeGrid" class="resource-grid">
+                        <label><input type="checkbox" name="resourceTypes" value="main_frame">页面</label>
+                        <label><input type="checkbox" name="resourceTypes" value="sub_frame">子框架</label>
+                        <label><input type="checkbox" name="resourceTypes" value="xmlhttprequest">Fetch / XHR</label>
+                        <label><input type="checkbox" name="resourceTypes" value="script">脚本</label>
+                        <label><input type="checkbox" name="resourceTypes" value="stylesheet">样式</label>
+                        <label><input type="checkbox" name="resourceTypes" value="image">图片</label>
+                        <label><input type="checkbox" name="resourceTypes" value="font">字体</label>
+                        <label><input type="checkbox" name="resourceTypes" value="media">媒体</label>
+                        <label><input type="checkbox" name="resourceTypes" value="websocket">WebSocket</label>
+                        <label><input type="checkbox" name="resourceTypes" value="other">其他</label>
+                      </div>
+                      <p class="field-error" data-error-for="resourceTypes"></p>
+                    </fieldset>
+
+                    <div class="field-group compact-number">
+                      <label for="priority">优先级</label>
+                      <input id="priority" name="priority" type="number" min="1" max="1000000" step="1" value="1">
+                      <p class="field-help">数字越大越优先。</p>
+                      <p class="field-error" data-error-for="priority"></p>
+                    </div>
+                  </div>
+                </details>
+
+                <label class="setting-row span-2" for="ruleEnabled">
+                  <span><strong>启用此规则</strong><small>保存后立即更新 Chrome 动态规则</small></span>
+                  <span class="switch-control">
+                    <input id="ruleEnabled" name="enabled" type="checkbox" role="switch" checked>
+                    <span class="switch-track" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </div>
+            </form>
+
+            <footer class="editor-footer">
+              <button id="cancelEditButton" class="button secondary" type="button">取消更改</button>
+              <button id="saveRuleButton" class="button primary" type="submit" form="ruleForm">保存规则</button>
+            </footer>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="deleteDialog" class="dialog">
+      <form method="dialog">
+        <div class="dialog-icon danger"><svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg></div>
+        <h2>删除规则？</h2>
+        <p id="deleteDialogText">此操作无法撤销。</p>
+        <div class="dialog-actions">
+          <button class="button secondary" value="cancel">取消</button>
+          <button class="button danger-button" value="confirm">删除</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="importDialog" class="dialog">
+      <form id="importForm" method="dialog">
+        <div class="dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg></div>
+        <h2>导入规则</h2>
+        <p id="importSummary">已读取规则文件。</p>
+        <fieldset class="import-options">
+          <legend>导入方式</legend>
+          <label><input type="radio" name="importMode" value="add" checked> 添加到现有规则</label>
+          <label><input type="radio" name="importMode" value="replace"> 替换现有规则</label>
+        </fieldset>
+        <p class="dialog-note">导入不会自动申请网站权限，Header 值会保存在本机。</p>
+        <div class="dialog-actions">
+          <button class="button secondary" value="cancel">取消</button>
+          <button class="button primary" value="confirm">导入</button>
+        </div>
+      </form>
+    </dialog>
+
+    <input id="importFileInput" class="sr-only" type="file" accept="application/json,.json" tabindex="-1">
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m17 8-5-5-5 5"></path><path d="M12 3v12"></path></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></symbol>
+      <symbol id="icon-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.3-2.7a1.1 1.1 0 0 1 1.4 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+      <symbol id="icon-shield-alert" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.3-2.7a1.1 1.1 0 0 1 1.4 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></symbol>
+      <symbol id="icon-pause-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M10 9v6"></path><path d="M14 9v6"></path></symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></symbol>
+      <symbol id="icon-list-settings" viewBox="0 0 24 24"><path d="M3 6h10"></path><path d="M3 12h7"></path><path d="M3 18h7"></path><path d="M17 15.5V14"></path><path d="M17 22v-1.5"></path><path d="M14 18h-1.5"></path><path d="M21.5 18H20"></path><circle cx="17" cy="18" r="2"></circle></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+      <symbol id="icon-triangle-alert" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></symbol>
+    </svg>
+    <script type="module" src="src/manager.js"></script>
+  </body>
+</html>
