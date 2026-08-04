@@ -71,7 +71,10 @@
     }
   }
 
-  function ruleMatchesUrl(rule, url) {
+  function ruleMatchesUrl(rule, url, method) {
+    if (rule.requestMethods?.length && !rule.requestMethods.includes(method)) {
+      return false;
+    }
     if (rule.resourceTypes?.length && !rule.resourceTypes.includes("xmlhttprequest")) {
       return false;
     }
@@ -81,9 +84,9 @@
       .some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
   }
 
-  function responseOverrideFor(url) {
+  function responseOverrideFor(url, method) {
     const matches = responseRules
-      .filter((rule) => ruleMatchesUrl(rule, url))
+      .filter((rule) => ruleMatchesUrl(rule, url, method))
       .sort((left, right) => right.priority - left.priority || left.id - right.id);
     let status = null;
     let body = null;
@@ -107,6 +110,10 @@
     }
   }
 
+  function requestMethod(input, init) {
+    return String(init?.method || input?.method || "GET").toUpperCase();
+  }
+
   function createResponse(response, override) {
     const status = override.status ?? (response.status >= 200 ? response.status : 200);
     const bodyNotAllowed = [204, 205, 304].includes(status);
@@ -122,8 +129,8 @@
     });
   }
 
-  async function applyFetchOverride(response, url) {
-    const override = responseOverrideFor(url);
+  async function applyFetchOverride(response, url, method) {
+    const override = responseOverrideFor(url, method);
     if (!override) {
       return response;
     }
@@ -173,6 +180,7 @@
       super();
       this._xhr = new NativeXMLHttpRequest();
       this._requestUrl = "";
+      this._requestMethod = "GET";
       this._async = true;
       this._prepared = false;
       this._bodyOverride = null;
@@ -211,7 +219,7 @@
       this._status = this._xhr.status;
       this._statusText = this._xhr.statusText;
       this._responseValue = this._xhr.response;
-      const override = responseOverrideFor(this._requestUrl);
+      const override = responseOverrideFor(this._requestUrl, this._requestMethod);
       if (!override) {
         return;
       }
@@ -230,6 +238,7 @@
 
     open(method, url, async = true, user, password) {
       this._requestUrl = requestUrl(url);
+      this._requestMethod = String(method || "GET").toUpperCase();
       this._async = async !== false;
       this._prepared = false;
       this._bodyOverride = null;
@@ -293,7 +302,8 @@
   if (nativeFetch) {
     window.fetch = function patchedFetch(input, init) {
       const url = requestUrl(input);
-      return nativeFetch(input, init).then((response) => applyFetchOverride(response, url));
+      const method = requestMethod(input, init);
+      return nativeFetch(input, init).then((response) => applyFetchOverride(response, url, method));
     };
   }
   if (NativeXMLHttpRequest) {

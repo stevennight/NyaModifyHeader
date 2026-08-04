@@ -21,6 +21,17 @@ export const RESOURCE_TYPES = Object.freeze([
   "websocket",
   "other"
 ]);
+export const REQUEST_METHODS = Object.freeze([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "DELETE",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "PATCH"
+]);
 
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const WILDCARD_PATTERN = /^(\*|https?):\/\/([^/\s]+)(\/.*)?$/i;
@@ -59,6 +70,7 @@ export function createBlankRule(id, initialPattern = "") {
     sitePatterns: initialPattern ? [canonicalizeWildcardPattern(initialPattern)] : [],
     excludedSitePatterns: [],
     resourceTypes: [],
+    requestMethods: [],
     priority: 1,
     responseStatus: null,
     responseBody: null
@@ -199,6 +211,23 @@ function legacyFields(rule) {
   };
 }
 
+function normalizeRequestMethods(value) {
+  if (!Array.isArray(value)) {
+    throw new RuleValidationError("请求方法必须是数组", "requestMethods");
+  }
+  const normalized = value.map((method) => {
+    if (typeof method !== "string") {
+      throw new RuleValidationError("请求方法必须是文本", "requestMethods");
+    }
+    const upperMethod = method.trim().toUpperCase();
+    if (!REQUEST_METHODS.includes(upperMethod)) {
+      throw new RuleValidationError(`不支持的请求方法：${method}`, "requestMethods");
+    }
+    return upperMethod;
+  });
+  return [...new Set(normalized)];
+}
+
 function normalizeHeaderChange(input, index) {
   const change = requireObject(input, `Header 修改项 ${index + 1}`);
   const direction = requireString(change.direction ?? "request", "修改对象", 16, {
@@ -311,6 +340,7 @@ function normalizeRule(input, fallbackId) {
   if (uniqueResourceTypes.some((type) => !RESOURCE_TYPES.includes(type))) {
     throw new RuleValidationError("包含不支持的资源类型", "resourceTypes");
   }
+  const requestMethods = normalizeRequestMethods(rule.requestMethods ?? []);
 
   const responseStatusValue = rule.responseStatus;
   const responseStatus = responseStatusValue === undefined
@@ -334,6 +364,7 @@ function normalizeRule(input, fallbackId) {
     sitePatterns,
     excludedSitePatterns,
     resourceTypes: uniqueResourceTypes,
+    requestMethods,
     priority: requireInteger(rule.priority ?? 1, "优先级", 1, 1_000_000),
     responseStatus,
     responseBody
@@ -439,6 +470,9 @@ function createCondition(rule, pattern) {
   if (rule.resourceTypes.length) {
     condition.resourceTypes = rule.resourceTypes;
   }
+  if (rule.requestMethods.length) {
+    condition.requestMethods = rule.requestMethods.map((method) => method.toLowerCase());
+  }
   return condition;
 }
 
@@ -498,6 +532,7 @@ export function compileResponseRules(input) {
       sitePatterns: rule.sitePatterns,
       excludedSitePatterns: rule.excludedSitePatterns,
       resourceTypes: rule.resourceTypes,
+      requestMethods: rule.requestMethods,
       responseStatus: rule.responseStatus,
       responseBody: rule.responseBody
     }));

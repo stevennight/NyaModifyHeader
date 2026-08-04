@@ -38,7 +38,7 @@ const elements = Object.fromEntries([
   "ruleName", "headerChangesList", "addHeaderChangeButton", "headerChangesCount", "sensitiveWarning",
   "responseStatus", "responseBodyEnabled", "responseBody",
   "matchDnrLabel", "matchTypeHelp", "sitePatterns", "patternCount",
-  "excludedSitePatterns", "allResources", "resourceTypeGrid", "priority", "ruleEnabled",
+  "excludedSitePatterns", "allResources", "resourceTypeGrid", "allRequestMethods", "requestMethodGrid", "priority", "ruleEnabled",
   "cancelEditButton", "saveRuleButton", "deleteDialog", "deleteDialogText", "importDialog",
   "importForm", "importSummary", "importFileInput", "toast"
 ].map((id) => [id, document.getElementById(id)]));
@@ -104,6 +104,7 @@ function ruleMatchesSearch(rule, query) {
     ...rule.headerChanges.flatMap((change) => [change.header, operationLabels[change.operation]]),
     rule.responseStatus === null ? "" : String(rule.responseStatus),
     rule.responseBody ?? "",
+    ...rule.requestMethods,
     ...rule.sitePatterns,
     ...rule.excludedSitePatterns
   ].join(" ").toLocaleLowerCase().includes(query);
@@ -149,11 +150,12 @@ function createRuleRow(rule) {
     rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
     rule.responseBody === null ? "" : "响应 Body"
   ].filter(Boolean).join(" + ");
+  const methodSummary = rule.requestMethods.length ? ` · ${rule.requestMethods.join("/")}` : "";
   const changeSummary = firstChange
     ? `${operationLabels[firstChange.operation]} ${firstChange.header}`
       + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "")
     : responseSummary || "无修改";
-  summary.append(direction, document.createTextNode(changeSummary));
+  summary.append(direction, document.createTextNode(`${changeSummary}${methodSummary}`));
   const sites = createElement("span", "rule-sites", summarizeRuleSites(rule));
   main.append(title, summary, sites);
 
@@ -397,6 +399,18 @@ function updateResourceFields({ selectDefault = false } = {}) {
   elements.resourceTypeGrid.classList.toggle("disabled", elements.allResources.checked);
 }
 
+function updateRequestMethodFields() {
+  const inputs = [...elements.requestMethodGrid.querySelectorAll("input")];
+  if (!elements.allRequestMethods.checked && !inputs.some((input) => input.checked)) {
+    elements.allRequestMethods.checked = true;
+  }
+  for (const input of inputs) {
+    if (elements.allRequestMethods.checked) input.checked = false;
+    input.disabled = elements.allRequestMethods.checked;
+  }
+  elements.requestMethodGrid.classList.toggle("disabled", elements.allRequestMethods.checked);
+}
+
 function convertLegacyPattern(pattern) {
   const match = pattern.match(/^\|\|([^/^]+)(?:\/.*)?$/);
   return match ? `*://*.${match[1]}/*` : pattern;
@@ -438,10 +452,14 @@ function fillEditor(rule) {
   const resourceInputs = [...elements.resourceTypeGrid.querySelectorAll("input")];
   elements.allResources.checked = rule.resourceTypes.length === 0;
   for (const input of resourceInputs) input.checked = rule.resourceTypes.includes(input.value);
+  const requestMethodInputs = [...elements.requestMethodGrid.querySelectorAll("input")];
+  elements.allRequestMethods.checked = rule.requestMethods.length === 0;
+  for (const input of requestMethodInputs) input.checked = rule.requestMethods.includes(input.value);
   const advanced = elements.ruleForm.querySelector(".advanced-panel");
   advanced.open = Boolean(
     rule.excludedSitePatterns.length
       || rule.resourceTypes.length
+      || rule.requestMethods.length
       || rule.priority !== 1
       || rule.responseStatus !== null
       || rule.responseBody !== null
@@ -449,6 +467,7 @@ function fillEditor(rule) {
   updatePatternCount();
   updateMatchTypeHelp();
   updateResourceFields();
+  updateRequestMethodFields();
   dirty = false;
   suppressDirty = false;
 }
@@ -463,7 +482,8 @@ function updateEditorSubtitle(rule) {
   const changeLabel = rule.headerChanges.length
     ? `${rule.headerChanges.length} 项 Header 修改`
     : overrideLabel || "无 Header 修改";
-  elements.editorSubtitle.textContent = `${changeLabel} · ${rangeLabel} · ${typeLabel}`;
+  const methodLabel = rule.requestMethods.length ? ` · ${rule.requestMethods.join("/")}` : "";
+  elements.editorSubtitle.textContent = `${changeLabel}${methodLabel} · ${rangeLabel} · ${typeLabel}`;
 }
 
 function confirmDiscard() {
@@ -510,6 +530,9 @@ function readEditorRule() {
   const resourceTypes = elements.allResources.checked
     ? []
     : [...elements.resourceTypeGrid.querySelectorAll("input:checked")].map((input) => input.value);
+  const requestMethods = elements.allRequestMethods.checked
+    ? []
+    : [...elements.requestMethodGrid.querySelectorAll("input:checked")].map((input) => input.value);
   return {
     id: editingRuleId ?? state.nextRuleId,
     enabled: elements.ruleEnabled.checked,
@@ -521,6 +544,7 @@ function readEditorRule() {
     sitePatterns: patternLines(elements.sitePatterns.value),
     excludedSitePatterns: patternLines(elements.excludedSitePatterns.value),
     resourceTypes,
+    requestMethods,
     priority: Number(elements.priority.value)
   };
 }
@@ -714,6 +738,8 @@ function bindEvents() {
       updateResourceFields();
     }
   });
+  elements.allRequestMethods.addEventListener("change", updateRequestMethodFields);
+  elements.requestMethodGrid.addEventListener("change", updateRequestMethodFields);
 
   elements.rulesList.addEventListener("click", (event) => {
     const target = event.target.closest("[data-action]");

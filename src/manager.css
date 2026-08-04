@@ -165,7 +165,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .advanced-grid { padding-top: 5px; }
 .check-row, .resource-grid label, .import-options label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .check-row input, .resource-grid input, .import-options input { width: 16px; height: 16px; accent-color: var(--teal); }
-.all-resources { min-height: 30px; margin-bottom: 4px; color: #344054; font-size: 12px; font-weight: 600; }
+.all-resources, .all-request-methods { min-height: 30px; margin-bottom: 4px; color: #344054; font-size: 12px; font-weight: 600; }
 .resource-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px 10px; }
 .resource-grid label { min-height: 28px; color: #475467; font-size: 12px; }
 .resource-grid.disabled { opacity: .45; }

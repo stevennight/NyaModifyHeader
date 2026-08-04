@@ -185,6 +185,24 @@
                     </div>
 
                     <fieldset class="field-group span-2">
+                      <legend>请求方法 <span class="optional">可选，空白表示全部</span></legend>
+                      <label class="check-row all-request-methods"><input id="allRequestMethods" type="checkbox" checked> 全部请求方法</label>
+                      <div id="requestMethodGrid" class="resource-grid request-method-grid">
+                        <label><input type="checkbox" name="requestMethods" value="GET">GET</label>
+                        <label><input type="checkbox" name="requestMethods" value="HEAD">HEAD</label>
+                        <label><input type="checkbox" name="requestMethods" value="POST">POST</label>
+                        <label><input type="checkbox" name="requestMethods" value="PUT">PUT</label>
+                        <label><input type="checkbox" name="requestMethods" value="DELETE">DELETE</label>
+                        <label><input type="checkbox" name="requestMethods" value="OPTIONS">OPTIONS</label>
+                        <label><input type="checkbox" name="requestMethods" value="PATCH">PATCH</label>
+                        <label><input type="checkbox" name="requestMethods" value="CONNECT">CONNECT</label>
+                        <label><input type="checkbox" name="requestMethods" value="TRACE">TRACE</label>
+                      </div>
+                      <p class="field-help">例如只选择 OPTIONS，可让响应 Header 规则只作用于 CORS 预检请求。</p>
+                      <p class="field-error" data-error-for="requestMethods"></p>
+                    </fieldset>
+
+                    <fieldset class="field-group span-2">
                       <legend>资源类型</legend>
                       <label class="check-row all-resources"><input id="allResources" type="checkbox" checked> 全部资源类型</label>
                       <div id="resourceTypeGrid" class="resource-grid">

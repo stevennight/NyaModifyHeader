@@ -123,6 +123,33 @@ test("fetch response overrides honor exclusions", async () => {
   assert.equal(await response.text(), "original");
 });
 
+test("fetch response overrides honor request method filters", async () => {
+  const window = createWindow();
+  loadInterceptor(window);
+  window.postMessage({
+    source: "NyaModifyHeader",
+    type: "SET_RESPONSE_RULES",
+    rules: [{
+      id: 1,
+      priority: 10,
+      matchType: "wildcard",
+      sitePatterns: ["https://api.example.com/*"],
+      excludedSitePatterns: [],
+      resourceTypes: [],
+      requestMethods: ["OPTIONS"],
+      responseStatus: 200,
+      responseBody: "preflight-ok"
+    }]
+  });
+
+  const getResponse = await window.fetch("https://api.example.com/items");
+  assert.equal(getResponse.status, 200);
+  assert.equal(await getResponse.text(), "original");
+  const optionsResponse = await window.fetch("https://api.example.com/items", { method: "OPTIONS" });
+  assert.equal(optionsResponse.status, 200);
+  assert.equal(await optionsResponse.text(), "preflight-ok");
+});
+
 test("XMLHttpRequest response overrides are visible before load handlers run", () => {
   const window = createWindow();
   window.XMLHttpRequest = FakeXMLHttpRequest;

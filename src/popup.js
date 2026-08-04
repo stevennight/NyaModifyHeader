@@ -106,11 +106,12 @@ function createRuleRow(rule) {
     rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
     rule.responseBody === null ? "" : "响应 Body"
   ].filter(Boolean).join(" + ");
+  const methodSummary = rule.requestMethods.length ? ` · ${rule.requestMethods.join("/")}` : "";
   const changeSummary = firstChange
     ? `${operationLabels[firstChange.operation]} ${firstChange.header}`
       + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "")
     : responseSummary || "无修改";
-  summary.append(direction, document.createTextNode(changeSummary));
+  summary.append(direction, document.createTextNode(`${changeSummary}${methodSummary}`));
   const sites = createElement("span", "rule-sites", summarizeRuleSites(rule));
   content.append(title, summary, sites);
 

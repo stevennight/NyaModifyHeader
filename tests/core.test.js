@@ -107,6 +107,13 @@ test("response remove compiles without a value", () => {
   assert.deepEqual(compiled.action.responseHeaders, [{ header: "Server", operation: "remove" }]);
 });
 
+test("request method filters compile to lowercase DNR conditions", () => {
+  const [compiled] = compileDynamicRules(makeState([makeRule({
+    requestMethods: ["OPTIONS", "POST", "options"]
+  })]));
+  assert.deepEqual(compiled.condition.requestMethods, ["options", "post"]);
+});
+
 test("disabled rules and global pause compile to no rules", () => {
   assert.deepEqual(compileDynamicRules(makeState([makeRule({ enabled: false })])), []);
   assert.deepEqual(compileDynamicRules(makeState([makeRule()], { globalEnabled: false })), []);
@@ -224,6 +231,7 @@ test("compiles response status and body overrides separately from DNR rules", ()
     sitePatterns: ["https://*.example.com/*"],
     excludedSitePatterns: [],
     resourceTypes: ["xmlhttprequest"],
+    requestMethods: [],
     responseStatus: 418,
     responseBody: "{\"debug\":true}"
   }]);
@@ -243,6 +251,13 @@ test("validates response status range and body rules", () => {
     responseStatus: 204,
     responseBody: ""
   })])).rules[0].responseBody, "");
+});
+
+test("validates request method filters", () => {
+  assert.throws(
+    () => normalizeState(makeState([makeRule({ requestMethods: ["OPTIONS", "INVALID"] })])),
+    (error) => error instanceof RuleValidationError && error.field === "requestMethods"
+  );
 });
 
 test("rejects a state that expands beyond Chrome dynamic-rule capacity", () => {
