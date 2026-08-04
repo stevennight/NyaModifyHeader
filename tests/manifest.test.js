@@ -11,7 +11,10 @@ test("manifest requests only the reviewed runtime permissions", () => {
   assert.deepEqual(manifest.permissions, ["storage", "declarativeNetRequestWithHostAccess", "activeTab"]);
   assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   assert.equal("host_permissions" in manifest, false);
-  assert.equal("content_scripts" in manifest, false);
+  assert.equal(manifest.content_scripts.length, 2);
+  assert.deepEqual(manifest.content_scripts[0].matches, ["http://*/*", "https://*/*"]);
+  assert.equal(manifest.content_scripts[0].world, "MAIN");
+  assert.equal(manifest.content_scripts[1].world, undefined);
   assert.equal("web_accessible_resources" in manifest, false);
   assert.equal("externally_connectable" in manifest, false);
   assert.equal(manifest.options_page, "manager.html");
@@ -32,6 +35,11 @@ test("all icon files referenced by the manifest exist", async () => {
     ...Object.values(manifest.action.default_icon)
   ]);
   await Promise.all([...iconPaths].map((path) => access(resolve(projectRoot, path))));
+});
+
+test("all response content script files referenced by the manifest exist", async () => {
+  const scriptPaths = manifest.content_scripts.flatMap((entry) => entry.js);
+  await Promise.all(scriptPaths.map((path) => access(resolve(projectRoot, path))));
 });
 
 test("runtime JavaScript contains no outbound network API", async () => {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>规则管理 - Nya Header</title>
+    <title>规则管理 - NyaModifyHeader</title>
     <link rel="stylesheet" href="src/manager.css">
   </head>
   <body>
@@ -12,7 +12,7 @@
         <div class="brand">
           <img src="assets/icon-48.png" width="36" height="36" alt="">
           <div>
-            <h1>Nya Header</h1>
+            <h1>NyaModifyHeader</h1>
             <p>规则管理</p>
           </div>
         </div>
@@ -124,6 +124,28 @@
                   <svg class="icon" aria-hidden="true"><use href="#icon-triangle-alert"></use></svg>
                   <span>修改项中包含敏感 Header。值会以明文保存在当前 Chrome 配置中，请确认使用范围。</span>
                 </div>
+
+                <fieldset class="field-group span-2 response-override-group">
+                  <legend>响应调试覆盖 <span class="optional">可选，仅影响页面 Fetch / XHR</span></legend>
+                  <div class="response-override-grid">
+                    <div class="field-group compact-number">
+                      <label for="responseStatus">HTTP 状态码 <span class="optional">可选</span></label>
+                      <input id="responseStatus" name="responseStatus" type="number" min="200" max="599" step="1" placeholder="例如：404">
+                      <p class="field-help">修改页面 JavaScript 读取到的响应状态码。</p>
+                      <p class="field-error" data-error-for="responseStatus"></p>
+                    </div>
+                    <div class="field-group response-body-field">
+                      <label class="check-row" for="responseBodyEnabled">
+                        <input id="responseBodyEnabled" type="checkbox">
+                        替换响应 Body
+                      </label>
+                      <textarea id="responseBody" name="responseBody" rows="4" maxlength="1048576" placeholder="例如：{&quot;debug&quot;:true}" spellcheck="false" disabled></textarea>
+                      <p class="field-help">启用后整段替换响应内容，支持空字符串。</p>
+                      <p class="field-error" data-error-for="responseBody"></p>
+                    </div>
+                  </div>
+                  <p class="field-help response-override-help">这是页面级本地调试覆盖，不会改变 Chrome Network 面板中的真实 HTTP 响应，也不作用于图片、脚本等非 Fetch / XHR 资源。</p>
+                </fieldset>
 
                 <fieldset class="field-group span-2">
                   <legend>网址匹配方式</legend>

@@ -78,7 +78,7 @@ function matchingRules() {
 
 function createRuleRow(rule) {
   const row = createElement("article", `rule-row${rule.enabled ? "" : " disabled"}`);
-  const primaryHeader = rule.headerChanges[0]?.header || "未命名 Header";
+  const primaryHeader = rule.headerChanges[0]?.header || "响应覆盖";
   const displayName = rule.name || primaryHeader;
   const switchLabel = createElement("label", "switch-control rule-toggle");
   switchLabel.title = rule.enabled ? "停用规则" : "启用规则";
@@ -99,11 +99,17 @@ function createRuleRow(rule) {
   const direction = createElement(
     "span",
     `direction${directions.size === 1 && directions.has("response") ? " response" : ""}`,
-    directions.size === 1 ? (directions.has("request") ? "请求" : "响应") : "多项"
+    !rule.headerChanges.length ? "响应" : directions.size === 1 ? (directions.has("request") ? "请求" : "响应") : "多项"
   );
   const firstChange = rule.headerChanges[0];
-  const changeSummary = `${operationLabels[firstChange.operation]} ${firstChange.header}`
-    + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "");
+  const responseSummary = [
+    rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
+    rule.responseBody === null ? "" : "响应 Body"
+  ].filter(Boolean).join(" + ");
+  const changeSummary = firstChange
+    ? `${operationLabels[firstChange.operation]} ${firstChange.header}`
+      + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "")
+    : responseSummary || "无修改";
   summary.append(direction, document.createTextNode(changeSummary));
   const sites = createElement("span", "rule-sites", summarizeRuleSites(rule));
   content.append(title, summary, sites);

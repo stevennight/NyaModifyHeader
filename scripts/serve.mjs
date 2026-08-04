@@ -46,5 +46,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(requestedPort, "127.0.0.1", () => {
-  console.log(`Nya Header demo: http://127.0.0.1:${requestedPort}/popup.html`);
+  console.log(`NyaModifyHeader demo: http://127.0.0.1:${requestedPort}/popup.html`);
 });

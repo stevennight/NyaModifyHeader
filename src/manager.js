@@ -36,6 +36,7 @@ const elements = Object.fromEntries([
   "listEmptyTitle", "listEmptyText", "editorEmpty", "editorView", "editorTitle",
   "editorSubtitle", "mobileBackButton", "editorDeleteButton", "ruleForm", "formError",
   "ruleName", "headerChangesList", "addHeaderChangeButton", "headerChangesCount", "sensitiveWarning",
+  "responseStatus", "responseBodyEnabled", "responseBody",
   "matchDnrLabel", "matchTypeHelp", "sitePatterns", "patternCount",
   "excludedSitePatterns", "allResources", "resourceTypeGrid", "priority", "ruleEnabled",
   "cancelEditButton", "saveRuleButton", "deleteDialog", "deleteDialogText", "importDialog",
@@ -101,6 +102,8 @@ function ruleMatchesSearch(rule, query) {
   return [
     rule.name,
     ...rule.headerChanges.flatMap((change) => [change.header, operationLabels[change.operation]]),
+    rule.responseStatus === null ? "" : String(rule.responseStatus),
+    rule.responseBody ?? "",
     ...rule.sitePatterns,
     ...rule.excludedSitePatterns
   ].join(" ").toLocaleLowerCase().includes(query);
@@ -115,7 +118,7 @@ function createRuleRow(rule) {
 
   const switchLabel = createElement("label", "switch-control rule-toggle");
   switchLabel.title = rule.enabled ? "停用规则" : "启用规则";
-  const primaryHeader = rule.headerChanges[0]?.header || "未命名 Header";
+  const primaryHeader = rule.headerChanges[0]?.header || "响应覆盖";
   const displayName = rule.name || primaryHeader;
   const switchText = createElement("span", "sr-only", `${rule.enabled ? "停用" : "启用"}${displayName}`);
   const switchInput = document.createElement("input");
@@ -139,11 +142,17 @@ function createRuleRow(rule) {
   const direction = createElement(
     "span",
     `direction${directions.size === 1 && directions.has("response") ? " response" : ""}`,
-    directions.size === 1 ? (directions.has("request") ? "请求" : "响应") : "多项"
+    !rule.headerChanges.length ? "响应" : directions.size === 1 ? (directions.has("request") ? "请求" : "响应") : "多项"
   );
   const firstChange = rule.headerChanges[0];
-  const changeSummary = `${operationLabels[firstChange.operation]} ${firstChange.header}`
-    + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "");
+  const responseSummary = [
+    rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
+    rule.responseBody === null ? "" : "响应 Body"
+  ].filter(Boolean).join(" + ");
+  const changeSummary = firstChange
+    ? `${operationLabels[firstChange.operation]} ${firstChange.header}`
+      + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "")
+    : responseSummary || "无修改";
   summary.append(direction, document.createTextNode(changeSummary));
   const sites = createElement("span", "rule-sites", summarizeRuleSites(rule));
   main.append(title, summary, sites);
@@ -276,6 +285,10 @@ function syncHeaderChangeRow(row) {
   row.classList.toggle("is-remove", remove);
 }
 
+function syncResponseOverrideFields() {
+  elements.responseBody.disabled = !elements.responseBodyEnabled.checked;
+}
+
 function createHeaderChangeRow(change, index, total) {
   const row = createElement("div", "header-change-row");
   row.dataset.changeIndex = String(index);
@@ -405,6 +418,10 @@ function fillEditor(rule) {
   clearFormErrors();
   elements.ruleName.value = rule.name;
   renderHeaderChanges(rule.headerChanges);
+  elements.responseStatus.value = rule.responseStatus === null ? "" : String(rule.responseStatus);
+  elements.responseBodyEnabled.checked = rule.responseBody !== null;
+  elements.responseBody.value = rule.responseBody ?? "";
+  syncResponseOverrideFields();
   const legacy = rule.matchType === "dnr";
   const legacyInput = document.getElementById("matchDnr");
   legacyInput.hidden = !legacy;
@@ -422,7 +439,13 @@ function fillEditor(rule) {
   elements.allResources.checked = rule.resourceTypes.length === 0;
   for (const input of resourceInputs) input.checked = rule.resourceTypes.includes(input.value);
   const advanced = elements.ruleForm.querySelector(".advanced-panel");
-  advanced.open = Boolean(rule.excludedSitePatterns.length || rule.resourceTypes.length || rule.priority !== 1);
+  advanced.open = Boolean(
+    rule.excludedSitePatterns.length
+      || rule.resourceTypes.length
+      || rule.priority !== 1
+      || rule.responseStatus !== null
+      || rule.responseBody !== null
+  );
   updatePatternCount();
   updateMatchTypeHelp();
   updateResourceFields();
@@ -433,7 +456,14 @@ function fillEditor(rule) {
 function updateEditorSubtitle(rule) {
   const rangeLabel = rule.sitePatterns.length ? `${rule.sitePatterns.length} 个网址模式` : "所有网站";
   const typeLabel = rule.matchType === "regex" ? "正则" : rule.matchType === "dnr" ? "旧版 DNR" : "通配符";
-  elements.editorSubtitle.textContent = `${rule.headerChanges.length} 项 Header 修改 · ${rangeLabel} · ${typeLabel}`;
+  const overrideLabel = [
+    rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
+    rule.responseBody === null ? "" : "响应 Body"
+  ].filter(Boolean).join(" + ");
+  const changeLabel = rule.headerChanges.length
+    ? `${rule.headerChanges.length} 项 Header 修改`
+    : overrideLabel || "无 Header 修改";
+  elements.editorSubtitle.textContent = `${changeLabel} · ${rangeLabel} · ${typeLabel}`;
 }
 
 function confirmDiscard() {
@@ -485,6 +515,8 @@ function readEditorRule() {
     enabled: elements.ruleEnabled.checked,
     name: elements.ruleName.value,
     headerChanges: collectDraftHeaderChanges(),
+    responseStatus: elements.responseStatus.value === "" ? null : Number(elements.responseStatus.value),
+    responseBody: elements.responseBodyEnabled.checked ? elements.responseBody.value : null,
     matchType: getRadioValue("matchType"),
     sitePatterns: patternLines(elements.sitePatterns.value),
     excludedSitePatterns: patternLines(elements.excludedSitePatterns.value),
@@ -531,7 +563,7 @@ function requestDelete(ruleId) {
   const rule = state.rules.find((item) => item.id === ruleId);
   if (!rule) return;
   pendingDeleteId = ruleId;
-  elements.deleteDialogText.textContent = `删除“${rule.name || rule.headerChanges[0]?.header}”？此操作无法撤销。`;
+  elements.deleteDialogText.textContent = `删除“${rule.name || rule.headerChanges[0]?.header || "响应覆盖"}”？此操作无法撤销。`;
   elements.deleteDialog.returnValue = "";
   elements.deleteDialog.showModal();
 }
@@ -559,7 +591,7 @@ async function duplicateRule(ruleId) {
     ...clone(source),
     id: candidate.nextRuleId,
     enabled: false,
-    name: `${source.name || source.headerChanges[0]?.header}（副本）`
+    name: `${source.name || source.headerChanges[0]?.header || "响应覆盖"}（副本）`
   };
   candidate.nextRuleId += 1;
   candidate.rules.splice(index + 1, 0, copyRule);
@@ -590,7 +622,7 @@ function exportRules() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `nya-modify-header-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.download = `nyamodifyheader-${new Date().toISOString().slice(0, 10)}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
   showToast(`已导出 ${state.rules.length} 条规则`);
@@ -655,6 +687,7 @@ function bindEvents() {
   });
   elements.sitePatterns.addEventListener("input", updatePatternCount);
   elements.addHeaderChangeButton.addEventListener("click", addHeaderChange);
+  elements.responseBodyEnabled.addEventListener("change", syncResponseOverrideFields);
   elements.headerChangesList.addEventListener("input", updateSensitiveWarning);
   elements.headerChangesList.addEventListener("change", (event) => {
     const row = event.target.closest(".header-change-row");

@@ -8,6 +8,7 @@ import {
   canonicalizeWildcardPattern,
   collectRegexFiltersForValidation,
   compileDynamicRules,
+  compileResponseRules,
   createDefaultState,
   exportState,
   importState,
@@ -38,7 +39,7 @@ function makeRule(overrides = {}) {
 
 function makeState(rules = [makeRule()], overrides = {}) {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     globalEnabled: true,
     nextRuleId: Math.max(0, ...rules.map((rule) => rule.id)) + 1,
     rules,
@@ -46,9 +47,9 @@ function makeState(rules = [makeRule()], overrides = {}) {
   };
 }
 
-test("default state uses schema v3", () => {
+test("default state uses schema v4", () => {
   assert.deepEqual(createDefaultState(), {
-    schemaVersion: 3,
+    schemaVersion: 4,
     globalEnabled: true,
     nextRuleId: 1,
     rules: []
@@ -135,7 +136,7 @@ test("creates an exact-origin wildcard for the current site", () => {
   assert.equal(patternForUrl("chrome://settings"), "");
 });
 
-test("migrates v1/v2 single-header rules into a v3 headerChanges array", () => {
+test("migrates v1/v2 single-header rules into a v4 headerChanges array", () => {
   const migratedV1 = normalizeState({
     schemaVersion: 1,
     globalEnabled: true,
@@ -172,7 +173,7 @@ test("migrates v1/v2 single-header rules into a v3 headerChanges array", () => {
       priority: 1
     }]
   });
-  assert.equal(migratedV1.schemaVersion, 3);
+  assert.equal(migratedV1.schemaVersion, 4);
   assert.deepEqual(migratedV1.rules[0].headerChanges, [makeChange({ header: "X-Legacy" })]);
   assert.equal(migratedV1.rules[0].matchType, "dnr");
   assert.deepEqual(migratedV2.rules[0].headerChanges, [makeChange({ direction: "response", operation: "remove", header: "Server", value: "" })]);
@@ -209,6 +210,41 @@ test("rejects malformed changes, duplicate headers, injection and oversized arra
   assert.throws(() => normalizeState(makeState([makeRule({ headerChanges: changes })])), /20/);
 });
 
+test("compiles response status and body overrides separately from DNR rules", () => {
+  const state = makeState([makeRule({
+    headerChanges: [],
+    responseStatus: 418,
+    responseBody: "{\"debug\":true}"
+  })]);
+  assert.deepEqual(compileDynamicRules(state), []);
+  assert.deepEqual(compileResponseRules(state), [{
+    id: 1,
+    priority: 10,
+    matchType: "wildcard",
+    sitePatterns: ["https://*.example.com/*"],
+    excludedSitePatterns: [],
+    resourceTypes: ["xmlhttprequest"],
+    responseStatus: 418,
+    responseBody: "{\"debug\":true}"
+  }]);
+});
+
+test("validates response status range and body rules", () => {
+  assert.throws(
+    () => normalizeState(makeState([makeRule({ headerChanges: [], responseStatus: 199 })])),
+    (error) => error instanceof RuleValidationError && error.field === "responseStatus"
+  );
+  assert.throws(
+    () => normalizeState(makeState([makeRule({ headerChanges: [], responseStatus: 204, responseBody: "no" })])),
+    (error) => error instanceof RuleValidationError && error.field === "responseBody"
+  );
+  assert.deepEqual(normalizeState(makeState([makeRule({
+    headerChanges: [],
+    responseStatus: 204,
+    responseBody: ""
+  })])).rules[0].responseBody, "");
+});
+
 test("rejects a state that expands beyond Chrome dynamic-rule capacity", () => {
   const patterns = Array.from({ length: 20 }, (_, index) => `https://site${index}.test/*`);
   const rules = Array.from({ length: 251 }, (_, index) => makeRule({
@@ -226,6 +262,6 @@ test("import reassigns IDs, rejects future schemas and export round-trips", () =
   ])));
   assert.deepEqual(imported.rules.map((rule) => rule.id), [1, 2]);
   assert.equal(imported.nextRuleId, 3);
-  assert.throws(() => importState(JSON.stringify({ schemaVersion: 4, rules: [] })), /配置版本/);
+  assert.throws(() => importState(JSON.stringify({ schemaVersion: 5, rules: [] })), /配置版本/);
   assert.deepEqual(importState(exportState(makeState())), normalizeState(makeState()));
 });

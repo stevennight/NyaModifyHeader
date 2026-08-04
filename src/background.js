@@ -2,6 +2,7 @@ import {
   RuleValidationError,
   collectRegexFiltersForValidation,
   compileDynamicRules,
+  compileResponseRules,
   createDefaultState,
   normalizeState
 } from "./core.js";
@@ -55,7 +56,20 @@ async function commitState(candidate) {
     throw error;
   }
 
+  await broadcastResponseRules(nextState).catch(() => undefined);
+
   return { state: nextState, dynamicRuleCount };
+}
+
+async function broadcastResponseRules(state) {
+  const rules = compileResponseRules(state);
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs
+    .filter((tab) => Number.isInteger(tab.id))
+    .map((tab) => chrome.tabs.sendMessage(tab.id, {
+      type: "UPDATE_RESPONSE_RULES",
+      rules
+    }).catch(() => undefined)));
 }
 
 async function initialize() {
@@ -101,6 +115,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const dynamicRules = await chrome.declarativeNetRequest.getDynamicRules();
         return { state, dynamicRuleCount: dynamicRules.length };
       })
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, error: serializeError(error) }));
+    return true;
+  }
+
+  if (message.type === "GET_RESPONSE_RULES") {
+    mutationQueue
+      .then(async () => ({ rules: compileResponseRules(await readState()) }))
       .then((payload) => sendResponse({ ok: true, ...payload }))
       .catch((error) => sendResponse({ ok: false, error: serializeError(error) }));
     return true;

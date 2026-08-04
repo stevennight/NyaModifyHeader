@@ -1,11 +1,11 @@
 {
-  "name": "nya-modify-header",
+  "name": "nyamodifyheader",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/core.js && node --check src/background.js && node --check src/client.js && node --check src/popup.js && node --check src/manager.js",
+    "check": "node --check src/core.js && node --check src/background.js && node --check src/client.js && node --check src/popup.js && node --check src/manager.js && node --check src/response-bridge.js && node --check src/response-interceptor.js",
     "dev": "node scripts/serve.mjs"
   }
 }

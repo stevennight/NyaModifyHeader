@@ -1,9 +1,10 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const MAX_RULES = 1000;
 export const MAX_PATTERNS_PER_RULE = 20;
 export const MAX_HEADER_CHANGES_PER_RULE = 20;
 export const MAX_COMPILED_RULES = 5000;
 export const MAX_IMPORT_BYTES = 1024 * 1024;
+export const MAX_RESPONSE_BODY_LENGTH = 1024 * 1024;
 
 export const DIRECTIONS = Object.freeze(["request", "response"]);
 export const OPERATIONS = Object.freeze(["set", "append", "remove"]);
@@ -53,12 +54,14 @@ export function createBlankRule(id, initialPattern = "") {
     id,
     enabled: true,
     name: "",
-    headerChanges: [createBlankHeaderChange()],
+    headerChanges: [],
     matchType: "wildcard",
     sitePatterns: initialPattern ? [canonicalizeWildcardPattern(initialPattern)] : [],
     excludedSitePatterns: [],
     resourceTypes: [],
-    priority: 1
+    priority: 1,
+    responseStatus: null,
+    responseBody: null
   };
 }
 
@@ -92,9 +95,9 @@ function requireString(value, field, maximum, { allowEmpty = true, trim = true }
   return normalized;
 }
 
-function requireInteger(value, field, minimum, maximum) {
+function requireInteger(value, field, minimum, maximum, errorField = field) {
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new RuleValidationError(`${field}必须是 ${minimum} 到 ${maximum} 之间的整数`, field);
+    throw new RuleValidationError(`${field}必须是 ${minimum} 到 ${maximum} 之间的整数`, errorField);
   }
   return value;
 }
@@ -242,12 +245,14 @@ function normalizeHeaderChanges(rule) {
     header: rule.header ?? "",
     value: rule.value ?? ""
   };
-  const source = rule.headerChanges ?? [legacyChange];
+  const hasLegacyHeaderFields = ["direction", "operation", "header", "value"]
+    .some((field) => field in rule);
+  const source = rule.headerChanges ?? (hasLegacyHeaderFields ? [legacyChange] : []);
   if (!Array.isArray(source)) {
     throw new RuleValidationError("Header 修改项必须是数组", "headerChanges");
   }
   if (!source.length) {
-    throw new RuleValidationError("至少需要一项 Header 修改", "headerChanges");
+    return [];
   }
   if (source.length > MAX_HEADER_CHANGES_PER_RULE) {
     throw new RuleValidationError(
@@ -307,6 +312,19 @@ function normalizeRule(input, fallbackId) {
     throw new RuleValidationError("包含不支持的资源类型", "resourceTypes");
   }
 
+  const responseStatusValue = rule.responseStatus;
+  const responseStatus = responseStatusValue === undefined
+    || responseStatusValue === null
+    || responseStatusValue === ""
+    ? null
+    : requireInteger(responseStatusValue, "HTTP 状态码", 200, 599, "responseStatus");
+  const responseBody = rule.responseBody === undefined || rule.responseBody === null
+    ? null
+    : requireString(rule.responseBody, "响应 Body", MAX_RESPONSE_BODY_LENGTH, { trim: false });
+  if ([204, 205, 304].includes(responseStatus) && responseBody !== null && responseBody.length) {
+    throw new RuleValidationError("204、205 和 304 响应不能包含非空 Body", "responseBody");
+  }
+
   return {
     id,
     enabled: rule.enabled !== false,
@@ -316,14 +334,16 @@ function normalizeRule(input, fallbackId) {
     sitePatterns,
     excludedSitePatterns,
     resourceTypes: uniqueResourceTypes,
-    priority: requireInteger(rule.priority ?? 1, "优先级", 1, 1_000_000)
+    priority: requireInteger(rule.priority ?? 1, "优先级", 1, 1_000_000),
+    responseStatus,
+    responseBody
   };
 }
 
 export function normalizeState(input, { reassignIds = false } = {}) {
   const source = requireObject(input, "配置");
   const schemaVersion = source.schemaVersion ?? 1;
-  if (![1, 2, SCHEMA_VERSION].includes(schemaVersion)) {
+  if (![1, 2, 3, SCHEMA_VERSION].includes(schemaVersion)) {
     throw new RuleValidationError(`不支持的配置版本：${schemaVersion}`, "schemaVersion");
   }
   if (!Array.isArray(source.rules)) {
@@ -381,7 +401,7 @@ export function collectRegexFiltersForValidation(input) {
   }
   const regexes = new Set();
   for (const rule of state.rules) {
-    if (!rule.enabled || rule.matchType !== "regex") {
+    if (!rule.enabled || !rule.headerChanges.length || rule.matchType !== "regex") {
       continue;
     }
     for (const pattern of rule.sitePatterns) {
@@ -430,6 +450,9 @@ export function compileDynamicRules(input) {
 
   const dynamicRules = [];
   for (const rule of state.rules.filter((candidate) => candidate.enabled)) {
+    if (!rule.headerChanges.length) {
+      continue;
+    }
     const patterns = rule.sitePatterns.length ? rule.sitePatterns : [""];
     for (const pattern of patterns) {
       if (dynamicRules.length >= MAX_COMPILED_RULES) {
@@ -459,6 +482,25 @@ export function compileDynamicRules(input) {
     }
   }
   return dynamicRules;
+}
+
+export function compileResponseRules(input) {
+  const state = normalizeState(input);
+  if (!state.globalEnabled) {
+    return [];
+  }
+  return state.rules
+    .filter((rule) => rule.enabled && (rule.responseStatus !== null || rule.responseBody !== null))
+    .map((rule) => ({
+      id: rule.id,
+      priority: rule.priority,
+      matchType: rule.matchType,
+      sitePatterns: rule.sitePatterns,
+      excludedSitePatterns: rule.excludedSitePatterns,
+      resourceTypes: rule.resourceTypes,
+      responseStatus: rule.responseStatus,
+      responseBody: rule.responseBody
+    }));
 }
 
 function legacyDnrFilterToRegex(filter) {
@@ -529,6 +571,13 @@ export function summarizeRuleSites(input) {
 
 export function summarizeHeaderChanges(input) {
   const rule = normalizeRule(input, input?.id ?? 1);
+  if (!rule.headerChanges.length) {
+    const overrides = [
+      rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
+      rule.responseBody === null ? "" : "响应 Body"
+    ].filter(Boolean);
+    return overrides.join(" + ") || "无修改";
+  }
   const first = rule.headerChanges[0];
   const direction = first.direction === "request" ? "请求" : "响应";
   const operation = first.operation === "set" ? "设置" : first.operation === "append" ? "追加" : "移除";

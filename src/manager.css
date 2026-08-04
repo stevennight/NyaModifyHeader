@@ -150,6 +150,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .segmented-control input:focus-visible + label { outline: 2px solid #0e7490; outline-offset: 1px; }
 .inline-warning { display: flex; align-items: flex-start; margin-top: -3px; padding: 9px 10px; gap: 8px; border: 1px solid #efd5a5; border-radius: 5px; color: #744b17; background: var(--amber-soft); font-size: 11px; line-height: 17px; }
 .inline-warning .icon { width: 16px; height: 16px; margin-top: 1px; }
+.response-override-group { margin-top: -2px; padding: 12px 13px 11px; border: 1px solid #c8ddd9; border-radius: 5px; background: #f7fbfa; }
+.response-override-group > legend { margin-bottom: 10px; }
+.response-override-grid { display: grid; grid-template-columns: minmax(160px, .72fr) minmax(280px, 1.28fr); gap: 18px; }
+.response-override-grid .field-group { margin-bottom: 0; }
+.response-body-field .check-row { min-height: 30px; color: #344054; font-size: 12px; font-weight: 650; }
+.response-body-field textarea:disabled { color: var(--faint); background: var(--surface-soft); }
+.response-override-help { margin-bottom: 0; }
 .advanced-panel { margin: 2px 0 17px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
 .advanced-panel summary { display: flex; align-items: center; justify-content: space-between; min-height: 46px; color: #344054; font-size: 12px; font-weight: 650; cursor: pointer; list-style: none; }
 .advanced-panel summary::-webkit-details-marker { display: none; }
@@ -194,6 +201,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
   .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid, .advanced-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: span 1; }
+  .response-override-grid { grid-template-columns: 1fr; gap: 12px; }
   .header-change-row { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 36px; }
   .header-change-row .change-header, .header-change-row .change-value { grid-column: 2 / 4; }
 }
