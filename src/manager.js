@@ -4,6 +4,7 @@ import {
   RuleValidationError,
   createBlankRule,
   exportState,
+  formatSitePatternSpec,
   importState,
   normalizeState,
   summarizeRuleSites
@@ -105,7 +106,9 @@ function ruleMatchesSearch(rule, query) {
     rule.responseStatus === null ? "" : String(rule.responseStatus),
     rule.responseBody ?? "",
     ...(rule.requestMethods ?? []),
-    ...rule.sitePatterns,
+    ...rule.sitePatterns.map((pattern, index) =>
+      formatSitePatternSpec(pattern, rule.sitePatternMethods?.[index])
+    ),
     ...rule.excludedSitePatterns
   ].join(" ").toLocaleLowerCase().includes(query);
 }
@@ -413,8 +416,11 @@ function updateRequestMethodFields() {
 }
 
 function convertLegacyPattern(pattern) {
-  const match = pattern.match(/^\|\|([^/^]+)(?:\/.*)?$/);
-  return match ? `*://*.${match[1]}/*` : pattern;
+  const prefixMatch = pattern.match(/^(\[[^\]]+\]\s+)(.+)$/);
+  const prefix = prefixMatch?.[1] || "";
+  const rawPattern = prefixMatch?.[2] || pattern;
+  const match = rawPattern.match(/^\|\|([^/^]+)(?:\/.*)?$/);
+  return match ? `${prefix}*://*.${match[1]}/*` : pattern;
 }
 
 function handleMatchTypeChange() {
@@ -445,7 +451,9 @@ function fillEditor(rule) {
   elements.matchDnrLabel.closest(".match-control").classList.toggle("legacy-visible", legacy);
   setRadioValue("matchType", rule.matchType);
   previousMatchType = rule.matchType;
-  elements.sitePatterns.value = rule.sitePatterns.join("\n");
+  elements.sitePatterns.value = rule.sitePatterns.map((pattern, index) =>
+    formatSitePatternSpec(pattern, rule.sitePatternMethods?.[index])
+  ).join("\n");
   elements.excludedSitePatterns.value = rule.excludedSitePatterns.join("\n");
   elements.priority.value = String(rule.priority);
   elements.ruleEnabled.checked = rule.enabled;

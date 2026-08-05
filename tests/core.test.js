@@ -39,7 +39,7 @@ function makeRule(overrides = {}) {
 
 function makeState(rules = [makeRule()], overrides = {}) {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     globalEnabled: true,
     nextRuleId: Math.max(0, ...rules.map((rule) => rule.id)) + 1,
     rules,
@@ -47,9 +47,9 @@ function makeState(rules = [makeRule()], overrides = {}) {
   };
 }
 
-test("default state uses schema v4", () => {
+test("default state uses schema v5", () => {
   assert.deepEqual(createDefaultState(), {
-    schemaVersion: 4,
+    schemaVersion: 5,
     globalEnabled: true,
     nextRuleId: 1,
     rules: []
@@ -114,6 +114,27 @@ test("request method filters compile to lowercase DNR conditions", () => {
   assert.deepEqual(compiled.condition.requestMethods, ["options", "post"]);
 });
 
+test("URL pattern method prefixes compile independently and inherit rule defaults", () => {
+  const compiled = compileDynamicRules(makeState([makeRule({
+    requestMethods: ["DELETE"],
+    sitePatterns: [
+      "[OPTIONS] https://api.example.com/*",
+      "[GET,POST] https://api.example.com/items/*",
+      "https://cdn.example.org/*",
+      "[ALL] https://all.example.org/*"
+    ]
+  })]));
+  assert.deepEqual(compiled.map((rule) => rule.condition.requestMethods), [
+    ["options"],
+    ["get", "post"],
+    ["delete"],
+    undefined
+  ]);
+  assert.deepEqual(normalizeState(makeState([makeRule({
+    sitePatterns: ["[OPTIONS] https://api.example.com/*"]
+  })])).rules[0].sitePatternMethods, [["OPTIONS"]]);
+});
+
 test("disabled rules and global pause compile to no rules", () => {
   assert.deepEqual(compileDynamicRules(makeState([makeRule({ enabled: false })])), []);
   assert.deepEqual(compileDynamicRules(makeState([makeRule()], { globalEnabled: false })), []);
@@ -138,12 +159,24 @@ test("current URL matching honors includes, exclusions and all-site rules", () =
   assert.equal(ruleMatchesUrl(rule, "chrome://extensions"), false);
 });
 
+test("current URL matching can evaluate URL pattern methods", () => {
+  const rule = makeRule({
+    sitePatterns: [
+      "[OPTIONS] https://api.example.com/preflight/*",
+      "[GET] https://api.example.com/items/*"
+    ]
+  });
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/items/1", "OPTIONS"), false);
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/items/1", "GET"), true);
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/preflight/items", "OPTIONS"), true);
+});
+
 test("creates an exact-origin wildcard for the current site", () => {
   assert.equal(patternForUrl("https://example.com:8443/path?q=1"), "https://example.com:8443/*");
   assert.equal(patternForUrl("chrome://settings"), "");
 });
 
-test("migrates v1/v2 single-header rules into a v4 headerChanges array", () => {
+test("migrates v1/v2 single-header rules into a v5 headerChanges array", () => {
   const migratedV1 = normalizeState({
     schemaVersion: 1,
     globalEnabled: true,
@@ -180,9 +213,10 @@ test("migrates v1/v2 single-header rules into a v4 headerChanges array", () => {
       priority: 1
     }]
   });
-  assert.equal(migratedV1.schemaVersion, 4);
+  assert.equal(migratedV1.schemaVersion, 5);
   assert.deepEqual(migratedV1.rules[0].headerChanges, [makeChange({ header: "X-Legacy" })]);
   assert.deepEqual(migratedV1.rules[0].requestMethods, []);
+  assert.deepEqual(migratedV1.rules[0].sitePatternMethods, [null]);
   assert.equal(migratedV1.rules[0].matchType, "dnr");
   assert.deepEqual(migratedV2.rules[0].headerChanges, [makeChange({ direction: "response", operation: "remove", header: "Server", value: "" })]);
 });
@@ -233,6 +267,7 @@ test("compiles response status and body overrides separately from DNR rules", ()
     excludedSitePatterns: [],
     resourceTypes: ["xmlhttprequest"],
     requestMethods: [],
+    sitePatternMethods: [null],
     responseStatus: 418,
     responseBody: "{\"debug\":true}"
   }]);
@@ -259,6 +294,12 @@ test("validates request method filters", () => {
     () => normalizeState(makeState([makeRule({ requestMethods: ["OPTIONS", "INVALID"] })])),
     (error) => error instanceof RuleValidationError && error.field === "requestMethods"
   );
+  assert.throws(
+    () => normalizeState(makeState([makeRule({
+      sitePatterns: ["[INVALID] https://example.com/*"]
+    })])),
+    (error) => error instanceof RuleValidationError && error.field === "sitePatterns"
+  );
 });
 
 test("rejects a state that expands beyond Chrome dynamic-rule capacity", () => {
@@ -278,6 +319,6 @@ test("import reassigns IDs, rejects future schemas and export round-trips", () =
   ])));
   assert.deepEqual(imported.rules.map((rule) => rule.id), [1, 2]);
   assert.equal(imported.nextRuleId, 3);
-  assert.throws(() => importState(JSON.stringify({ schemaVersion: 5, rules: [] })), /配置版本/);
+  assert.throws(() => importState(JSON.stringify({ schemaVersion: 6, rules: [] })), /配置版本/);
   assert.deepEqual(importState(exportState(makeState())), normalizeState(makeState()));
 });

@@ -72,14 +72,17 @@
   }
 
   function ruleMatchesUrl(rule, url, method) {
-    if (rule.requestMethods?.length && !rule.requestMethods.includes(method)) {
-      return false;
-    }
     if (rule.resourceTypes?.length && !rule.resourceTypes.includes("xmlhttprequest")) {
       return false;
     }
+    const matchesMethods = (requestMethods) => !requestMethods?.length
+      || requestMethods.includes(method);
     const included = !rule.sitePatterns?.length
-      || rule.sitePatterns.some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
+      ? matchesMethods(rule.requestMethods)
+      : rule.sitePatterns.some((pattern, index) =>
+        patternMatchesUrl(rule.matchType, pattern, url)
+        && matchesMethods(rule.sitePatternMethods?.[index] ?? rule.requestMethods)
+      );
     return included && !(rule.excludedSitePatterns || [])
       .some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
   }

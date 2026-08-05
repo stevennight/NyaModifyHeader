@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NyaModifyHeader",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A local, auditable request and response override rule manager.",
   "minimum_chrome_version": "102",
   "permissions": [

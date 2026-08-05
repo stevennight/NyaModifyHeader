@@ -49,6 +49,16 @@ popup 支持：
 - 每个包含模式会编译为一条 Chrome DNR 动态规则，该规则会携带全部 Header 修改项。
 - 所有启用规则合计最多编译为 5000 条动态规则。
 
+网址模式还可以为单独一行覆盖请求方法：
+
+```text
+[OPTIONS] https://api.example.com/*
+[GET,POST] https://api.example.com/items/*
+[ALL] https://api.example.com/public/*
+```
+
+方法前缀是可选的。没有前缀时，网址行继承当前规则的请求方法；`[ALL]` 会覆盖规则级设置并允许全部方法。同一条规则中的不同网址行可以使用不同的方法集合。
+
 ### 通配符
 
 这是 NyaModifyHeader 自己的简化语法，不是 Google 搜索语法，也不是直接暴露 Chrome DNR `urlFilter`。

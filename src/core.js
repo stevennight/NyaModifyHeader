@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const MAX_RULES = 1000;
 export const MAX_PATTERNS_PER_RULE = 20;
 export const MAX_HEADER_CHANGES_PER_RULE = 20;
@@ -68,6 +68,7 @@ export function createBlankRule(id, initialPattern = "") {
     headerChanges: [],
     matchType: "wildcard",
     sitePatterns: initialPattern ? [canonicalizeWildcardPattern(initialPattern)] : [],
+    sitePatternMethods: initialPattern ? [null] : [],
     excludedSitePatterns: [],
     resourceTypes: [],
     requestMethods: [],
@@ -201,6 +202,57 @@ function normalizePatterns(value, matchType, field) {
   return [...new Set(normalized)];
 }
 
+function normalizePatternMethodOverride(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!Array.isArray(value)) {
+    throw new RuleValidationError("网址模式请求方法必须是数组或 null", "sitePatternMethods");
+  }
+  try {
+    return normalizeRequestMethods(value);
+  } catch {
+    throw new RuleValidationError("网址模式请求方法无效", "sitePatternMethods");
+  }
+}
+
+function normalizeSitePatternEntries(value, matchType, explicitMethods) {
+  if (!Array.isArray(value)) {
+    throw new RuleValidationError("网址模式必须是数组", "sitePatterns");
+  }
+  if (value.length > MAX_PATTERNS_PER_RULE) {
+    throw new RuleValidationError(`每条规则最多支持 ${MAX_PATTERNS_PER_RULE} 个网址模式`, "sitePatterns");
+  }
+  if (explicitMethods !== undefined
+    && (!Array.isArray(explicitMethods) || explicitMethods.length !== value.length)) {
+    throw new RuleValidationError("网址模式请求方法必须与网址模式数量一致", "sitePatternMethods");
+  }
+
+  const patterns = [];
+  const requestMethods = [];
+  const seen = new Set();
+  for (const [index, rawPattern] of value.entries()) {
+    const parsed = parseSitePatternSpec(rawPattern);
+    const pattern = matchType === "wildcard"
+      ? canonicalizeWildcardPattern(parsed.pattern)
+      : requireString(parsed.pattern, "网址模式", LIMITS.pattern, { allowEmpty: false });
+    if (matchType === "regex") {
+      validateRegex(pattern, "sitePatterns");
+    }
+    const methods = parsed.requestMethods === null
+      ? normalizePatternMethodOverride(explicitMethods?.[index])
+      : parsed.requestMethods;
+    const key = `${pattern}\u0000${methods === null ? "inherit" : JSON.stringify(methods)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    patterns.push(pattern);
+    requestMethods.push(methods);
+  }
+  return { patterns, requestMethods };
+}
+
 function legacyFields(rule) {
   const hasLegacyFilter = typeof rule.urlFilter === "string" && rule.urlFilter.trim();
   const hasLegacyExclusion = typeof rule.excludedUrlFilter === "string" && rule.excludedUrlFilter.trim();
@@ -226,6 +278,35 @@ function normalizeRequestMethods(value) {
     return upperMethod;
   });
   return [...new Set(normalized)];
+}
+
+export function parseSitePatternSpec(input) {
+  const text = requireString(input, "网址模式", LIMITS.pattern, { allowEmpty: false });
+  const match = text.match(/^\[([^\]]+)\]\s+(.+)$/);
+  if (!match) {
+    return { pattern: text, requestMethods: null };
+  }
+
+  const methodSpec = match[1].trim();
+  const pattern = match[2].trim();
+  if (!pattern) {
+    throw new RuleValidationError("网址模式不能为空", "sitePatterns");
+  }
+  if (methodSpec.toUpperCase() === "ALL") {
+    return { pattern, requestMethods: [] };
+  }
+  try {
+    return { pattern, requestMethods: normalizeRequestMethods(methodSpec.split(",")) };
+  } catch {
+    throw new RuleValidationError("网址模式中的请求方法无效", "sitePatterns");
+  }
+}
+
+export function formatSitePatternSpec(pattern, requestMethods) {
+  if (requestMethods === null || requestMethods === undefined) {
+    return pattern;
+  }
+  return `[${requestMethods.length ? requestMethods.join(",") : "ALL"}] ${pattern}`;
 }
 
 function normalizeHeaderChange(input, index) {
@@ -318,11 +399,13 @@ function normalizeRule(input, fallbackId) {
     throw new RuleValidationError("匹配方式无效", "matchType");
   }
 
-  const sitePatterns = normalizePatterns(
+  const sitePatternEntries = normalizeSitePatternEntries(
     rule.sitePatterns ?? legacy.sitePatterns,
     matchType,
-    "sitePatterns"
+    rule.sitePatternMethods
   );
+  const sitePatterns = sitePatternEntries.patterns;
+  const sitePatternMethods = sitePatternEntries.requestMethods;
   const excludedSitePatterns = normalizePatterns(
     rule.excludedSitePatterns ?? legacy.excludedSitePatterns,
     matchType,
@@ -362,6 +445,7 @@ function normalizeRule(input, fallbackId) {
     headerChanges,
     matchType,
     sitePatterns,
+    sitePatternMethods,
     excludedSitePatterns,
     resourceTypes: uniqueResourceTypes,
     requestMethods,
@@ -374,7 +458,7 @@ function normalizeRule(input, fallbackId) {
 export function normalizeState(input, { reassignIds = false } = {}) {
   const source = requireObject(input, "配置");
   const schemaVersion = source.schemaVersion ?? 1;
-  if (![1, 2, 3, SCHEMA_VERSION].includes(schemaVersion)) {
+  if ([1, 2, 3, 4, SCHEMA_VERSION].includes(schemaVersion) === false) {
     throw new RuleValidationError(`不支持的配置版本：${schemaVersion}`, "schemaVersion");
   }
   if (!Array.isArray(source.rules)) {
@@ -446,7 +530,7 @@ export function collectRegexFiltersForValidation(input) {
   return [...regexes];
 }
 
-function createCondition(rule, pattern) {
+function createCondition(rule, pattern, patternMethods = null) {
   const condition = {};
   if (rule.matchType === "dnr") {
     if (pattern) {
@@ -470,8 +554,9 @@ function createCondition(rule, pattern) {
   if (rule.resourceTypes.length) {
     condition.resourceTypes = rule.resourceTypes;
   }
-  if (rule.requestMethods.length) {
-    condition.requestMethods = rule.requestMethods.map((method) => method.toLowerCase());
+  const requestMethods = patternMethods ?? rule.requestMethods;
+  if (requestMethods.length) {
+    condition.requestMethods = requestMethods.map((method) => method.toLowerCase());
   }
   return condition;
 }
@@ -488,7 +573,7 @@ export function compileDynamicRules(input) {
       continue;
     }
     const patterns = rule.sitePatterns.length ? rule.sitePatterns : [""];
-    for (const pattern of patterns) {
+    for (const [patternIndex, pattern] of patterns.entries()) {
       if (dynamicRules.length >= MAX_COMPILED_RULES) {
         throw new RuleValidationError(
           `启用的网址模式总数不能超过 ${MAX_COMPILED_RULES}`,
@@ -511,7 +596,9 @@ export function compileDynamicRules(input) {
         id: dynamicRules.length + 1,
         priority: rule.priority,
         action,
-        condition: createCondition(rule, pattern)
+        condition: createCondition(rule, pattern, rule.sitePatterns.length
+          ? rule.sitePatternMethods[patternIndex]
+          : null)
       });
     }
   }
@@ -533,6 +620,7 @@ export function compileResponseRules(input) {
       excludedSitePatterns: rule.excludedSitePatterns,
       resourceTypes: rule.resourceTypes,
       requestMethods: rule.requestMethods,
+      sitePatternMethods: rule.sitePatternMethods,
       responseStatus: rule.responseStatus,
       responseBody: rule.responseBody
     }));
@@ -574,13 +662,23 @@ export function isSupportedPageUrl(url) {
   }
 }
 
-export function ruleMatchesUrl(input, url) {
+export function ruleMatchesUrl(input, url, method = null) {
   if (!isSupportedPageUrl(url)) {
     return false;
   }
   const rule = normalizeRule(input, input?.id ?? 1);
+  const normalizedMethod = method === null || method === undefined
+    ? null
+    : String(method).toUpperCase();
+  const matchesMethods = (requestMethods) => normalizedMethod === null
+    || !requestMethods.length
+    || requestMethods.includes(normalizedMethod);
   const included = !rule.sitePatterns.length
-    || rule.sitePatterns.some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
+    ? matchesMethods(rule.requestMethods)
+    : rule.sitePatterns.some((pattern, index) =>
+      patternMatchesUrl(rule.matchType, pattern, url)
+      && matchesMethods(rule.sitePatternMethods[index] ?? rule.requestMethods)
+    );
   if (!included) {
     return false;
   }
@@ -600,8 +698,11 @@ export function summarizeRuleSites(input) {
   if (!rule.sitePatterns.length) {
     return "所有已授权网站";
   }
-  const first = rule.sitePatterns[0];
-  return rule.sitePatterns.length === 1 ? first : `${first} 等 ${rule.sitePatterns.length} 个模式`;
+  const sites = rule.sitePatterns.map((pattern, index) =>
+    formatSitePatternSpec(pattern, rule.sitePatternMethods[index])
+  );
+  const first = sites[0];
+  return sites.length === 1 ? first : `${first} 等 ${sites.length} 个模式`;
 }
 
 export function summarizeHeaderChanges(input) {

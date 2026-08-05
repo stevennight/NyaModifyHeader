@@ -168,6 +168,7 @@
                   </div>
                   <textarea id="sitePatterns" name="sitePatterns" rows="5" maxlength="22000" placeholder="每行一个，例如：&#10;https://api.example.com/*&#10;*://*.example.org/*" spellcheck="false"></textarea>
                   <p class="field-help">每行一个模式，最多 20 个；留空代表所有已授权网站。</p>
+                  <p class="field-help">可在网址前加方法覆盖，例如 <code>[OPTIONS] https://api.example.com/*</code> 或 <code>[GET,POST] https://api.example.com/items/*</code>；<code>[ALL]</code> 表示该行允许全部方法。</p>
                   <p class="field-error" data-error-for="sitePatterns"></p>
                 </div>
 
