@@ -182,6 +182,7 @@ test("migrates v1/v2 single-header rules into a v4 headerChanges array", () => {
   });
   assert.equal(migratedV1.schemaVersion, 4);
   assert.deepEqual(migratedV1.rules[0].headerChanges, [makeChange({ header: "X-Legacy" })]);
+  assert.deepEqual(migratedV1.rules[0].requestMethods, []);
   assert.equal(migratedV1.rules[0].matchType, "dnr");
   assert.deepEqual(migratedV2.rules[0].headerChanges, [makeChange({ direction: "response", operation: "remove", header: "Server", value: "" })]);
 });

@@ -104,7 +104,7 @@ function ruleMatchesSearch(rule, query) {
     ...rule.headerChanges.flatMap((change) => [change.header, operationLabels[change.operation]]),
     rule.responseStatus === null ? "" : String(rule.responseStatus),
     rule.responseBody ?? "",
-    ...rule.requestMethods,
+    ...(rule.requestMethods ?? []),
     ...rule.sitePatterns,
     ...rule.excludedSitePatterns
   ].join(" ").toLocaleLowerCase().includes(query);
@@ -150,7 +150,8 @@ function createRuleRow(rule) {
     rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
     rule.responseBody === null ? "" : "响应 Body"
   ].filter(Boolean).join(" + ");
-  const methodSummary = rule.requestMethods.length ? ` · ${rule.requestMethods.join("/")}` : "";
+  const requestMethods = rule.requestMethods ?? [];
+  const methodSummary = requestMethods.length ? ` · ${requestMethods.join("/")}` : "";
   const changeSummary = firstChange
     ? `${operationLabels[firstChange.operation]} ${firstChange.header}`
       + (rule.headerChanges.length > 1 ? ` 等 ${rule.headerChanges.length} 项` : "")
@@ -453,13 +454,14 @@ function fillEditor(rule) {
   elements.allResources.checked = rule.resourceTypes.length === 0;
   for (const input of resourceInputs) input.checked = rule.resourceTypes.includes(input.value);
   const requestMethodInputs = [...elements.requestMethodGrid.querySelectorAll("input")];
-  elements.allRequestMethods.checked = rule.requestMethods.length === 0;
-  for (const input of requestMethodInputs) input.checked = rule.requestMethods.includes(input.value);
+  const requestMethods = rule.requestMethods ?? [];
+  elements.allRequestMethods.checked = requestMethods.length === 0;
+  for (const input of requestMethodInputs) input.checked = requestMethods.includes(input.value);
   const advanced = elements.ruleForm.querySelector(".advanced-panel");
   advanced.open = Boolean(
     rule.excludedSitePatterns.length
       || rule.resourceTypes.length
-      || rule.requestMethods.length
+      || (rule.requestMethods ?? []).length
       || rule.priority !== 1
       || rule.responseStatus !== null
       || rule.responseBody !== null
@@ -482,7 +484,8 @@ function updateEditorSubtitle(rule) {
   const changeLabel = rule.headerChanges.length
     ? `${rule.headerChanges.length} 项 Header 修改`
     : overrideLabel || "无 Header 修改";
-  const methodLabel = rule.requestMethods.length ? ` · ${rule.requestMethods.join("/")}` : "";
+  const requestMethods = rule.requestMethods ?? [];
+  const methodLabel = requestMethods.length ? ` · ${requestMethods.join("/")}` : "";
   elements.editorSubtitle.textContent = `${changeLabel}${methodLabel} · ${rangeLabel} · ${typeLabel}`;
 }
 
