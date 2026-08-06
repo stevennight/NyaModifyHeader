@@ -37,7 +37,6 @@ const elements = Object.fromEntries([
   "listEmptyTitle", "listEmptyText", "editorEmpty", "editorView", "editorTitle",
   "editorSubtitle", "mobileBackButton", "editorDeleteButton", "ruleForm", "formError",
   "ruleName", "headerChangesList", "addHeaderChangeButton", "headerChangesCount", "sensitiveWarning",
-  "responseStatus", "responseBodyEnabled", "responseBody",
   "matchDnrLabel", "matchTypeHelp", "sitePatterns", "patternCount",
   "excludedSitePatterns", "allResources", "resourceTypeGrid", "allRequestMethods", "requestMethodGrid", "priority", "ruleEnabled",
   "cancelEditButton", "saveRuleButton", "deleteDialog", "deleteDialogText", "importDialog",
@@ -259,6 +258,12 @@ function showFormError(error) {
     input?.focus();
     return;
   }
+  if (field === "responseStatus" || field === "responseBody") {
+    const selector = field === "responseStatus" ? ".change-status" : ".change-body";
+    const input = elements.headerChangesList.querySelector(selector);
+    input?.closest(".header-change-row")?.classList.add("has-error");
+    input?.focus();
+  }
   elements.formError.textContent = error?.message || "无法保存规则";
   elements.formError.hidden = false;
   elements.formError.scrollIntoView({ block: "nearest" });
@@ -284,33 +289,44 @@ function createSelect(options, value, className, ariaLabel) {
   return select;
 }
 
-function syncHeaderChangeRow(row) {
-  const remove = row.querySelector(".change-operation").value === "remove";
+const modificationTypeOptions = Object.freeze([
+  ["requestHeader", "请求头"],
+  ["responseHeader", "响应头"],
+  ["status", "状态码"],
+  ["body", "响应体"]
+]);
+
+function syncModificationRow(row) {
+  const type = row.querySelector(".change-type").value;
+  const isHeader = type === "requestHeader" || type === "responseHeader";
+  const operation = row.querySelector(".change-operation");
+  const header = row.querySelector(".change-header");
   const value = row.querySelector(".change-value");
+  const status = row.querySelector(".change-status");
+  const body = row.querySelector(".change-body");
+  operation.hidden = !isHeader;
+  header.hidden = !isHeader;
+  value.hidden = !isHeader;
+  status.hidden = type !== "status";
+  body.hidden = type !== "body";
+  row.classList.toggle("body-mode", type === "body");
+  row.classList.toggle("is-remove", isHeader && operation.value === "remove");
+  const remove = isHeader && operation.value === "remove";
   value.disabled = remove;
   if (remove) value.value = "";
   value.placeholder = remove ? "移除无需填写值" : "Header 值";
-  row.classList.toggle("is-remove", remove);
 }
 
-function syncResponseOverrideFields() {
-  elements.responseBody.disabled = !elements.responseBodyEnabled.checked;
-}
-
-function createHeaderChangeRow(change, index, total) {
+function createModificationRow(item, index, total) {
   const row = createElement("div", "header-change-row");
   row.dataset.changeIndex = String(index);
   const indexLabel = createElement("span", "change-index", String(index + 1));
   indexLabel.setAttribute("aria-hidden", "true");
-  const direction = createSelect(
-    [["request", "请求头"], ["response", "响应头"]],
-    change.direction,
-    "change-direction",
-    `第 ${index + 1} 项修改对象`
-  );
+  const type = item.type || (item.direction === "response" ? "responseHeader" : "requestHeader");
+  const typeSelect = createSelect(modificationTypeOptions, type, "change-type", `第 ${index + 1} 项类型`);
   const operation = createSelect(
     [["set", "设置"], ["append", "追加"], ["remove", "移除"]],
-    change.operation,
+    item.operation || "set",
     "change-operation",
     `第 ${index + 1} 项操作`
   );
@@ -318,7 +334,7 @@ function createHeaderChangeRow(change, index, total) {
   header.type = "text";
   header.className = "change-header";
   header.maxLength = 256;
-  header.value = change.header;
+  header.value = item.header || "";
   header.placeholder = "Header 名称";
   header.spellcheck = false;
   header.setAttribute("aria-label", `第 ${index + 1} 项 Header 名称`);
@@ -326,46 +342,86 @@ function createHeaderChangeRow(change, index, total) {
   value.type = "text";
   value.className = "change-value";
   value.maxLength = 8192;
-  value.value = change.value;
+  value.value = item.value || "";
   value.spellcheck = false;
   value.setAttribute("aria-label", `第 ${index + 1} 项 Header 值`);
+  const status = document.createElement("input");
+  status.type = "number";
+  status.className = "change-status";
+  status.min = "200";
+  status.max = "599";
+  status.step = "1";
+  status.value = item.type === "status" ? item.value || "" : "";
+  status.placeholder = "例如：404";
+  status.setAttribute("aria-label", `第 ${index + 1} 项 HTTP 状态码`);
+  const body = document.createElement("textarea");
+  body.className = "change-body";
+  body.rows = 3;
+  body.maxLength = 1048576;
+  body.value = item.type === "body" ? item.value ?? "" : "";
+  body.placeholder = "例如：{\"debug\":true}";
+  body.spellcheck = false;
+  body.setAttribute("aria-label", `第 ${index + 1} 项响应体`);
+  const fields = createElement("div", "change-fields");
+  fields.append(operation, header, value, status, body);
   const removeButton = createElement("button", "icon-button danger change-remove");
   removeButton.type = "button";
   removeButton.dataset.removeChange = "true";
-  removeButton.setAttribute("aria-label", `删除第 ${index + 1} 项 Header 修改`);
-  removeButton.title = total === 1 ? "至少保留一项 Header 修改" : "删除此 Header 修改";
-  removeButton.disabled = total === 1;
+  removeButton.setAttribute("aria-label", `删除第 ${index + 1} 项修改`);
+  removeButton.title = "删除此修改项";
   removeButton.append(createIcon("trash"));
-  row.append(indexLabel, direction, operation, header, value, removeButton);
-  syncHeaderChangeRow(row);
+  row.append(indexLabel, typeSelect, fields, removeButton);
+  syncModificationRow(row);
   return row;
 }
 
-function collectDraftHeaderChanges() {
-  return [...elements.headerChangesList.querySelectorAll(".header-change-row")].map((row) => ({
-    direction: row.querySelector(".change-direction").value,
-    operation: row.querySelector(".change-operation").value,
-    header: row.querySelector(".change-header").value,
-    value: row.querySelector(".change-value").value
-  }));
+function collectDraftModificationItems() {
+  return [...elements.headerChangesList.querySelectorAll(".header-change-row")].map((row) => {
+    const type = row.querySelector(".change-type").value;
+    if (type === "status") {
+      return { type, value: row.querySelector(".change-status").value };
+    }
+    if (type === "body") {
+      return { type, value: row.querySelector(".change-body").value };
+    }
+    return {
+      type,
+      direction: type === "requestHeader" ? "request" : "response",
+      operation: row.querySelector(".change-operation").value,
+      header: row.querySelector(".change-header").value,
+      value: row.querySelector(".change-value").value
+    };
+  });
 }
 
-function renderHeaderChanges(changes) {
+function modificationItemsForRule(rule) {
+  const items = rule.headerChanges.map((change) => ({
+    type: change.direction === "request" ? "requestHeader" : "responseHeader",
+    ...change
+  }));
+  if (rule.responseStatus !== null) items.push({ type: "status", value: String(rule.responseStatus) });
+  if (rule.responseBody !== null) items.push({ type: "body", value: rule.responseBody });
+  return items.length
+    ? items
+    : [{ type: "requestHeader", direction: "request", operation: "set", header: "", value: "" }];
+}
+
+function renderModificationItems(items) {
   elements.headerChangesList.replaceChildren(
-    ...changes.map((change, index) => createHeaderChangeRow(change, index, changes.length))
+    ...items.map((item, index) => createModificationRow(item, index, items.length))
   );
-  elements.headerChangesCount.textContent = `${changes.length} 项`;
+  elements.headerChangesCount.textContent = `${items.length} 项`;
   updateSensitiveWarning();
 }
 
-function addHeaderChange() {
-  const changes = collectDraftHeaderChanges();
-  if (changes.length >= 20) {
-    showToast("每条规则最多支持 20 项 Header 修改", { error: true });
+function addModification() {
+  const items = collectDraftModificationItems();
+  if (items.length >= 20) {
+    showToast("每条规则最多支持 20 项修改", { error: true });
     return;
   }
-  changes.push({ direction: "request", operation: "set", header: "", value: "" });
-  renderHeaderChanges(changes);
+  items.push({ type: "requestHeader", direction: "request", operation: "set", header: "", value: "" });
+  renderModificationItems(items);
   elements.headerChangesList.lastElementChild?.querySelector(".change-header")?.focus();
   dirty = true;
 }
@@ -440,11 +496,7 @@ function fillEditor(rule) {
   suppressDirty = true;
   clearFormErrors();
   elements.ruleName.value = rule.name;
-  renderHeaderChanges(rule.headerChanges);
-  elements.responseStatus.value = rule.responseStatus === null ? "" : String(rule.responseStatus);
-  elements.responseBodyEnabled.checked = rule.responseBody !== null;
-  elements.responseBody.value = rule.responseBody ?? "";
-  syncResponseOverrideFields();
+  renderModificationItems(modificationItemsForRule(rule));
   const legacy = rule.matchType === "dnr";
   const legacyInput = document.getElementById("matchDnr");
   legacyInput.hidden = !legacy;
@@ -475,8 +527,6 @@ function fillEditor(rule) {
       || rule.resourceTypes.length
       || (rule.requestMethods ?? []).length
       || rule.priority !== 1
-      || rule.responseStatus !== null
-      || rule.responseBody !== null
   );
   updatePatternCount();
   updateMatchTypeHelp();
@@ -489,13 +539,12 @@ function fillEditor(rule) {
 function updateEditorSubtitle(rule) {
   const rangeLabel = rule.sitePatterns.length ? `${rule.sitePatterns.length} 个网址模式` : "所有网站";
   const typeLabel = rule.matchType === "regex" ? "正则" : rule.matchType === "dnr" ? "旧版 DNR" : "通配符";
-  const overrideLabel = [
-    rule.responseStatus === null ? "" : `HTTP ${rule.responseStatus}`,
-    rule.responseBody === null ? "" : "响应 Body"
-  ].filter(Boolean).join(" + ");
-  const changeLabel = rule.headerChanges.length
-    ? `${rule.headerChanges.length} 项 Header 修改`
-    : overrideLabel || "无 Header 修改";
+  const modificationCount = rule.headerChanges.length
+    + (rule.responseStatus === null ? 0 : 1)
+    + (rule.responseBody === null ? 0 : 1);
+  const changeLabel = modificationCount
+    ? `${modificationCount} 项修改`
+    : "无修改";
   const requestMethods = rule.requestMethods ?? [];
   const methodLabel = requestMethods.length ? ` · ${requestMethods.join("/")}` : "";
   elements.editorSubtitle.textContent = `${changeLabel}${methodLabel} · ${rangeLabel} · ${typeLabel}`;
@@ -518,7 +567,7 @@ function openEditor(ruleId = null, initialPattern = "") {
   elements.editorTitle.textContent = existing ? "编辑规则" : "新建规则";
   elements.editorSubtitle.textContent = existing
     ? ""
-    : "一条规则可以包含多项 Header 修改";
+    : "一条规则可以包含多项修改项";
   if (existing) updateEditorSubtitle(rule);
   elements.editorDeleteButton.hidden = !existing;
   fillEditor(rule);
@@ -548,13 +597,21 @@ function readEditorRule() {
   const requestMethods = elements.allRequestMethods.checked
     ? []
     : [...elements.requestMethodGrid.querySelectorAll("input:checked")].map((input) => input.value);
+  const items = collectDraftModificationItems();
+  const statusItems = items.filter((item) => item.type === "status");
+  const bodyItems = items.filter((item) => item.type === "body");
+  if (statusItems.length > 1 || bodyItems.length > 1) {
+    throw new RuleValidationError("每条规则最多只能有一个状态码和一个响应体修改项", "headerChanges");
+  }
   return {
     id: editingRuleId ?? state.nextRuleId,
     enabled: elements.ruleEnabled.checked,
     name: elements.ruleName.value,
-    headerChanges: collectDraftHeaderChanges(),
-    responseStatus: elements.responseStatus.value === "" ? null : Number(elements.responseStatus.value),
-    responseBody: elements.responseBodyEnabled.checked ? elements.responseBody.value : null,
+    headerChanges: items
+      .filter((item) => item.type === "requestHeader" || item.type === "responseHeader")
+      .map(({ type, ...change }) => change),
+    responseStatus: statusItems.length ? Number(statusItems[0].value) : null,
+    responseBody: bodyItems.length ? bodyItems[0].value : null,
     matchType: getRadioValue("matchType"),
     sitePatterns: patternLines(elements.sitePatterns.value),
     excludedSitePatterns: patternLines(elements.excludedSitePatterns.value),
@@ -725,21 +782,20 @@ function bindEvents() {
     if (!suppressDirty) dirty = true;
   });
   elements.sitePatterns.addEventListener("input", updatePatternCount);
-  elements.addHeaderChangeButton.addEventListener("click", addHeaderChange);
-  elements.responseBodyEnabled.addEventListener("change", syncResponseOverrideFields);
+  elements.addHeaderChangeButton.addEventListener("click", addModification);
   elements.headerChangesList.addEventListener("input", updateSensitiveWarning);
   elements.headerChangesList.addEventListener("change", (event) => {
     const row = event.target.closest(".header-change-row");
-    if (row && event.target.matches(".change-operation")) syncHeaderChangeRow(row);
+    if (row && event.target.matches(".change-type, .change-operation")) syncModificationRow(row);
     updateSensitiveWarning();
   });
   elements.headerChangesList.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-remove-change]");
     if (!button) return;
     const row = button.closest(".header-change-row");
-    const changes = collectDraftHeaderChanges();
-    changes.splice(Number(row.dataset.changeIndex), 1);
-    renderHeaderChanges(changes);
+    const items = collectDraftModificationItems();
+    items.splice(Number(row.dataset.changeIndex), 1);
+    renderModificationItems(items);
     dirty = true;
   });
   for (const input of elements.ruleForm.querySelectorAll('input[name="matchType"]')) {
