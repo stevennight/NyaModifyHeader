@@ -109,7 +109,9 @@ function ruleMatchesSearch(rule, query) {
     ...rule.sitePatterns.map((pattern, index) =>
       formatSitePatternSpec(pattern, rule.sitePatternMethods?.[index])
     ),
-    ...rule.excludedSitePatterns
+    ...rule.excludedSitePatterns.map((pattern, index) =>
+      formatSitePatternSpec(pattern, rule.excludedSitePatternMethods?.[index])
+    )
   ].join(" ").toLocaleLowerCase().includes(query);
 }
 
@@ -454,7 +456,9 @@ function fillEditor(rule) {
   elements.sitePatterns.value = rule.sitePatterns.map((pattern, index) =>
     formatSitePatternSpec(pattern, rule.sitePatternMethods?.[index])
   ).join("\n");
-  elements.excludedSitePatterns.value = rule.excludedSitePatterns.join("\n");
+  elements.excludedSitePatterns.value = rule.excludedSitePatterns.map((pattern, index) =>
+    formatSitePatternSpec(pattern, rule.excludedSitePatternMethods?.[index])
+  ).join("\n");
   elements.priority.value = String(rule.priority);
   elements.ruleEnabled.checked = rule.enabled;
 

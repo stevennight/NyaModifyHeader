@@ -59,6 +59,8 @@ popup 支持：
 
 方法前缀是可选的。没有前缀时，网址行继承当前规则的请求方法；`[ALL]` 会覆盖规则级设置并允许全部方法。同一条规则中的不同网址行可以使用不同的方法集合。
 
+排除网址模式也支持相同的前缀。例如 `[OPTIONS] https://api.example.com/private/*` 只排除 OPTIONS 请求，GET 等其他方法仍可命中规则；排除模式没有前缀时仍然排除全部方法。
+
 ### 通配符
 
 这是 NyaModifyHeader 自己的简化语法，不是 Google 搜索语法，也不是直接暴露 Chrome DNR `urlFilter`。

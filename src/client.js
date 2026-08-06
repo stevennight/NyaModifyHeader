@@ -5,7 +5,7 @@ export const IS_EXTENSION = Boolean(globalThis.chrome?.runtime?.id);
 
 let demoHasSiteAccess = new URLSearchParams(window.location.search).get("permission") !== "missing";
 let demoState = normalizeState({
-  schemaVersion: 5,
+  schemaVersion: 6,
   globalEnabled: true,
   nextRuleId: 4,
   rules: [

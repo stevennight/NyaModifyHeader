@@ -39,7 +39,7 @@ function makeRule(overrides = {}) {
 
 function makeState(rules = [makeRule()], overrides = {}) {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     globalEnabled: true,
     nextRuleId: Math.max(0, ...rules.map((rule) => rule.id)) + 1,
     rules,
@@ -47,9 +47,9 @@ function makeState(rules = [makeRule()], overrides = {}) {
   };
 }
 
-test("default state uses schema v5", () => {
+test("default state uses schema v6", () => {
   assert.deepEqual(createDefaultState(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     globalEnabled: true,
     nextRuleId: 1,
     rules: []
@@ -135,6 +135,17 @@ test("URL pattern method prefixes compile independently and inherit rule default
   })])).rules[0].sitePatternMethods, [["OPTIONS"]]);
 });
 
+test("excluded URL pattern method prefixes split DNR rules by method", () => {
+  const compiled = compileDynamicRules(makeState([makeRule({
+    excludedSitePatterns: ["[OPTIONS] https://api.example.com/private/*"]
+  })]));
+  const excluded = compiled.find((rule) => rule.condition.excludedRegexFilter);
+  const fallback = compiled.find((rule) => !rule.condition.excludedRegexFilter);
+  assert.deepEqual(excluded.condition.requestMethods, ["options"]);
+  assert.equal(fallback.condition.requestMethods.includes("options"), false);
+  assert.equal(fallback.condition.requestMethods.includes("get"), true);
+});
+
 test("disabled rules and global pause compile to no rules", () => {
   assert.deepEqual(compileDynamicRules(makeState([makeRule({ enabled: false })])), []);
   assert.deepEqual(compileDynamicRules(makeState([makeRule()], { globalEnabled: false })), []);
@@ -171,12 +182,21 @@ test("current URL matching can evaluate URL pattern methods", () => {
   assert.equal(ruleMatchesUrl(rule, "https://api.example.com/preflight/items", "OPTIONS"), true);
 });
 
+test("current URL matching can evaluate excluded URL pattern methods", () => {
+  const rule = makeRule({
+    excludedSitePatterns: ["[OPTIONS] https://api.example.com/private/*"]
+  });
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/private/item"), true);
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/private/item", "OPTIONS"), false);
+  assert.equal(ruleMatchesUrl(rule, "https://api.example.com/private/item", "GET"), true);
+});
+
 test("creates an exact-origin wildcard for the current site", () => {
   assert.equal(patternForUrl("https://example.com:8443/path?q=1"), "https://example.com:8443/*");
   assert.equal(patternForUrl("chrome://settings"), "");
 });
 
-test("migrates v1/v2 single-header rules into a v5 headerChanges array", () => {
+test("migrates v1/v2 single-header rules into a v6 headerChanges array", () => {
   const migratedV1 = normalizeState({
     schemaVersion: 1,
     globalEnabled: true,
@@ -213,7 +233,7 @@ test("migrates v1/v2 single-header rules into a v5 headerChanges array", () => {
       priority: 1
     }]
   });
-  assert.equal(migratedV1.schemaVersion, 5);
+  assert.equal(migratedV1.schemaVersion, 6);
   assert.deepEqual(migratedV1.rules[0].headerChanges, [makeChange({ header: "X-Legacy" })]);
   assert.deepEqual(migratedV1.rules[0].requestMethods, []);
   assert.deepEqual(migratedV1.rules[0].sitePatternMethods, [null]);
@@ -265,6 +285,7 @@ test("compiles response status and body overrides separately from DNR rules", ()
     matchType: "wildcard",
     sitePatterns: ["https://*.example.com/*"],
     excludedSitePatterns: [],
+    excludedSitePatternMethods: [],
     resourceTypes: ["xmlhttprequest"],
     requestMethods: [],
     sitePatternMethods: [null],
@@ -319,6 +340,6 @@ test("import reassigns IDs, rejects future schemas and export round-trips", () =
   ])));
   assert.deepEqual(imported.rules.map((rule) => rule.id), [1, 2]);
   assert.equal(imported.nextRuleId, 3);
-  assert.throws(() => importState(JSON.stringify({ schemaVersion: 6, rules: [] })), /配置版本/);
+  assert.throws(() => importState(JSON.stringify({ schemaVersion: 7, rules: [] })), /配置版本/);
   assert.deepEqual(importState(exportState(makeState())), normalizeState(makeState()));
 });

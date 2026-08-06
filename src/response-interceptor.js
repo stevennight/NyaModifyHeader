@@ -84,7 +84,10 @@
         && matchesMethods(rule.sitePatternMethods?.[index] ?? rule.requestMethods)
       );
     return included && !(rule.excludedSitePatterns || [])
-      .some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
+      .some((pattern, index) =>
+        patternMatchesUrl(rule.matchType, pattern, url)
+        && matchesMethods(rule.excludedSitePatternMethods?.[index] ?? [])
+      );
   }
 
   function responseOverrideFor(url, method) {

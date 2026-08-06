@@ -182,6 +182,7 @@
                       <label for="excludedSitePatterns">排除网址模式 <span class="optional">可选，每行一个</span></label>
                       <textarea id="excludedSitePatterns" name="excludedSitePatterns" rows="3" maxlength="22000" placeholder="例如：*://*.example.com/private/*" spellcheck="false"></textarea>
                       <p class="field-help">命中任一排除模式时，规则不会运行。</p>
+                      <p class="field-help">也支持方法前缀，例如 <code>[OPTIONS] https://api.example.com/private/*</code>；未加前缀时排除全部方法。</p>
                       <p class="field-error" data-error-for="excludedSitePatterns"></p>
                     </div>
 

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 export const MAX_RULES = 1000;
 export const MAX_PATTERNS_PER_RULE = 20;
 export const MAX_HEADER_CHANGES_PER_RULE = 20;
@@ -70,6 +70,7 @@ export function createBlankRule(id, initialPattern = "") {
     sitePatterns: initialPattern ? [canonicalizeWildcardPattern(initialPattern)] : [],
     sitePatternMethods: initialPattern ? [null] : [],
     excludedSitePatterns: [],
+    excludedSitePatternMethods: [],
     resourceTypes: [],
     requestMethods: [],
     priority: 1,
@@ -202,37 +203,40 @@ function normalizePatterns(value, matchType, field) {
   return [...new Set(normalized)];
 }
 
-function normalizePatternMethodOverride(value) {
+function normalizePatternMethodOverride(value, field) {
   if (value === null || value === undefined) {
     return null;
   }
   if (!Array.isArray(value)) {
-    throw new RuleValidationError("网址模式请求方法必须是数组或 null", "sitePatternMethods");
+    throw new RuleValidationError("网址模式请求方法必须是数组或 null", field);
   }
   try {
     return normalizeRequestMethods(value);
   } catch {
-    throw new RuleValidationError("网址模式请求方法无效", "sitePatternMethods");
+    throw new RuleValidationError("网址模式请求方法无效", field);
   }
 }
 
-function normalizeSitePatternEntries(value, matchType, explicitMethods) {
+function normalizeSitePatternEntries(value, matchType, explicitMethods, field) {
+  const methodsField = field === "sitePatterns"
+    ? "sitePatternMethods"
+    : "excludedSitePatternMethods";
   if (!Array.isArray(value)) {
-    throw new RuleValidationError("网址模式必须是数组", "sitePatterns");
+    throw new RuleValidationError("网址模式必须是数组", field);
   }
   if (value.length > MAX_PATTERNS_PER_RULE) {
-    throw new RuleValidationError(`每条规则最多支持 ${MAX_PATTERNS_PER_RULE} 个网址模式`, "sitePatterns");
+    throw new RuleValidationError(`每条规则最多支持 ${MAX_PATTERNS_PER_RULE} 个网址模式`, field);
   }
   if (explicitMethods !== undefined
     && (!Array.isArray(explicitMethods) || explicitMethods.length !== value.length)) {
-    throw new RuleValidationError("网址模式请求方法必须与网址模式数量一致", "sitePatternMethods");
+    throw new RuleValidationError("网址模式请求方法必须与网址模式数量一致", methodsField);
   }
 
   const patterns = [];
   const requestMethods = [];
   const seen = new Set();
   for (const [index, rawPattern] of value.entries()) {
-    const parsed = parseSitePatternSpec(rawPattern);
+    const parsed = parseSitePatternSpec(rawPattern, field);
     const pattern = matchType === "wildcard"
       ? canonicalizeWildcardPattern(parsed.pattern)
       : requireString(parsed.pattern, "网址模式", LIMITS.pattern, { allowEmpty: false });
@@ -240,7 +244,7 @@ function normalizeSitePatternEntries(value, matchType, explicitMethods) {
       validateRegex(pattern, "sitePatterns");
     }
     const methods = parsed.requestMethods === null
-      ? normalizePatternMethodOverride(explicitMethods?.[index])
+      ? normalizePatternMethodOverride(explicitMethods?.[index], methodsField)
       : parsed.requestMethods;
     const key = `${pattern}\u0000${methods === null ? "inherit" : JSON.stringify(methods)}`;
     if (seen.has(key)) {
@@ -280,7 +284,7 @@ function normalizeRequestMethods(value) {
   return [...new Set(normalized)];
 }
 
-export function parseSitePatternSpec(input) {
+export function parseSitePatternSpec(input, field = "sitePatterns") {
   const text = requireString(input, "网址模式", LIMITS.pattern, { allowEmpty: false });
   const match = text.match(/^\[([^\]]+)\]\s+(.+)$/);
   if (!match) {
@@ -290,7 +294,7 @@ export function parseSitePatternSpec(input) {
   const methodSpec = match[1].trim();
   const pattern = match[2].trim();
   if (!pattern) {
-    throw new RuleValidationError("网址模式不能为空", "sitePatterns");
+    throw new RuleValidationError("网址模式不能为空", field);
   }
   if (methodSpec.toUpperCase() === "ALL") {
     return { pattern, requestMethods: [] };
@@ -298,7 +302,7 @@ export function parseSitePatternSpec(input) {
   try {
     return { pattern, requestMethods: normalizeRequestMethods(methodSpec.split(",")) };
   } catch {
-    throw new RuleValidationError("网址模式中的请求方法无效", "sitePatterns");
+    throw new RuleValidationError("网址模式中的请求方法无效", field);
   }
 }
 
@@ -402,15 +406,19 @@ function normalizeRule(input, fallbackId) {
   const sitePatternEntries = normalizeSitePatternEntries(
     rule.sitePatterns ?? legacy.sitePatterns,
     matchType,
-    rule.sitePatternMethods
+    rule.sitePatternMethods,
+    "sitePatterns"
   );
   const sitePatterns = sitePatternEntries.patterns;
   const sitePatternMethods = sitePatternEntries.requestMethods;
-  const excludedSitePatterns = normalizePatterns(
+  const excludedSitePatternEntries = normalizeSitePatternEntries(
     rule.excludedSitePatterns ?? legacy.excludedSitePatterns,
     matchType,
+    rule.excludedSitePatternMethods,
     "excludedSitePatterns"
   );
+  const excludedSitePatterns = excludedSitePatternEntries.patterns;
+  const excludedSitePatternMethods = excludedSitePatternEntries.requestMethods;
   if (matchType === "dnr" && excludedSitePatterns.length > 1) {
     throw new RuleValidationError("旧版 DNR 匹配最多支持一个排除模式", "excludedSitePatterns");
   }
@@ -447,6 +455,7 @@ function normalizeRule(input, fallbackId) {
     sitePatterns,
     sitePatternMethods,
     excludedSitePatterns,
+    excludedSitePatternMethods,
     resourceTypes: uniqueResourceTypes,
     requestMethods,
     priority: requireInteger(rule.priority ?? 1, "优先级", 1, 1_000_000),
@@ -458,7 +467,7 @@ function normalizeRule(input, fallbackId) {
 export function normalizeState(input, { reassignIds = false } = {}) {
   const source = requireObject(input, "配置");
   const schemaVersion = source.schemaVersion ?? 1;
-  if ([1, 2, 3, 4, SCHEMA_VERSION].includes(schemaVersion) === false) {
+  if ([1, 2, 3, 4, 5, SCHEMA_VERSION].includes(schemaVersion) === false) {
     throw new RuleValidationError(`不支持的配置版本：${schemaVersion}`, "schemaVersion");
   }
   if (!Array.isArray(source.rules)) {
@@ -492,11 +501,14 @@ export function normalizeState(input, { reassignIds = false } = {}) {
   };
 }
 
-function combineExcludedRegex(rule) {
-  if (!rule.excludedSitePatterns.length || rule.matchType === "dnr") {
+function combineExcludedRegex(rule, excludedIndexes = null) {
+  const indexes = excludedIndexes === null
+    ? rule.excludedSitePatterns.map((_, index) => index)
+    : excludedIndexes;
+  if (!indexes.length || rule.matchType === "dnr") {
     return "";
   }
-  const sources = rule.excludedSitePatterns.map((pattern) =>
+  const sources = indexes.map((index) => rule.excludedSitePatterns[index]).map((pattern) =>
     rule.matchType === "wildcard" ? wildcardToRegexSource(pattern) : pattern
   );
   const combined = sources.length === 1 ? sources[0] : sources.map((source) => `(?:${source})`).join("|");
@@ -507,6 +519,34 @@ function combineExcludedRegex(rule) {
     );
   }
   return combined;
+}
+
+function createExclusionVariants(rule, includeMethods) {
+  if (!rule.excludedSitePatterns.length) {
+    return [{ requestMethods: includeMethods, excludedIndexes: [] }];
+  }
+
+  const allowedMethods = includeMethods.length ? includeMethods : [...REQUEST_METHODS];
+  const groups = new Map();
+  for (const method of allowedMethods) {
+    const excludedIndexes = rule.excludedSitePatterns
+      .map((_, index) => {
+        const methods = rule.excludedSitePatternMethods[index];
+        return methods === null || methods.length === 0 || methods.includes(method) ? index : -1;
+      })
+      .filter((index) => index >= 0);
+    const key = excludedIndexes.join(",");
+    const group = groups.get(key) || { methods: [], excludedIndexes };
+    group.methods.push(method);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].map(({ methods, excludedIndexes }) => ({
+    requestMethods: includeMethods.length || methods.length !== REQUEST_METHODS.length
+      ? methods
+      : [],
+    excludedIndexes
+  }));
 }
 
 export function collectRegexFiltersForValidation(input) {
@@ -530,20 +570,21 @@ export function collectRegexFiltersForValidation(input) {
   return [...regexes];
 }
 
-function createCondition(rule, pattern, patternMethods = null) {
+function createCondition(rule, pattern, requestMethods, excludedIndexes) {
   const condition = {};
+  const excludedSitePatterns = excludedIndexes.map((index) => rule.excludedSitePatterns[index]);
   if (rule.matchType === "dnr") {
     if (pattern) {
       condition.urlFilter = pattern;
     }
-    if (rule.excludedSitePatterns[0]) {
-      condition.excludedUrlFilter = rule.excludedSitePatterns[0];
+    if (excludedSitePatterns[0]) {
+      condition.excludedUrlFilter = excludedSitePatterns[0];
     }
   } else {
     if (pattern) {
       condition.regexFilter = rule.matchType === "wildcard" ? wildcardToRegexSource(pattern) : pattern;
     }
-    const excludedRegexFilter = combineExcludedRegex(rule);
+    const excludedRegexFilter = combineExcludedRegex(rule, excludedIndexes);
     if (excludedRegexFilter) {
       condition.excludedRegexFilter = excludedRegexFilter;
     }
@@ -554,7 +595,6 @@ function createCondition(rule, pattern, patternMethods = null) {
   if (rule.resourceTypes.length) {
     condition.resourceTypes = rule.resourceTypes;
   }
-  const requestMethods = patternMethods ?? rule.requestMethods;
   if (requestMethods.length) {
     condition.requestMethods = requestMethods.map((method) => method.toLowerCase());
   }
@@ -592,14 +632,24 @@ export function compileDynamicRules(input) {
       }
       if (requestHeaders.length) action.requestHeaders = requestHeaders;
       if (responseHeaders.length) action.responseHeaders = responseHeaders;
-      dynamicRules.push({
-        id: dynamicRules.length + 1,
-        priority: rule.priority,
-        action,
-        condition: createCondition(rule, pattern, rule.sitePatterns.length
-          ? rule.sitePatternMethods[patternIndex]
-          : null)
-      });
+      const patternMethods = rule.sitePatterns.length
+        ? rule.sitePatternMethods[patternIndex]
+        : null;
+      const variants = createExclusionVariants(rule, patternMethods ?? rule.requestMethods);
+      for (const variant of variants) {
+        if (dynamicRules.length >= MAX_COMPILED_RULES) {
+          throw new RuleValidationError(
+            "启用的网址模式总数不能超过 5000",
+            "sitePatterns"
+          );
+        }
+        dynamicRules.push({
+          id: dynamicRules.length + 1,
+          priority: rule.priority,
+          action,
+          condition: createCondition(rule, pattern, variant.requestMethods, variant.excludedIndexes)
+        });
+      }
     }
   }
   return dynamicRules;
@@ -618,6 +668,7 @@ export function compileResponseRules(input) {
       matchType: rule.matchType,
       sitePatterns: rule.sitePatterns,
       excludedSitePatterns: rule.excludedSitePatterns,
+      excludedSitePatternMethods: rule.excludedSitePatternMethods,
       resourceTypes: rule.resourceTypes,
       requestMethods: rule.requestMethods,
       sitePatternMethods: rule.sitePatternMethods,
@@ -673,6 +724,9 @@ export function ruleMatchesUrl(input, url, method = null) {
   const matchesMethods = (requestMethods) => normalizedMethod === null
     || !requestMethods.length
     || requestMethods.includes(normalizedMethod);
+  const excludedMethodsMatch = (requestMethods) => normalizedMethod === null
+    ? !requestMethods?.length
+    : matchesMethods(requestMethods ?? []);
   const included = !rule.sitePatterns.length
     ? matchesMethods(rule.requestMethods)
     : rule.sitePatterns.some((pattern, index) =>
@@ -682,7 +736,10 @@ export function ruleMatchesUrl(input, url, method = null) {
   if (!included) {
     return false;
   }
-  return !rule.excludedSitePatterns.some((pattern) => patternMatchesUrl(rule.matchType, pattern, url));
+  return !rule.excludedSitePatterns.some((pattern, index) =>
+    patternMatchesUrl(rule.matchType, pattern, url)
+    && excludedMethodsMatch(rule.excludedSitePatternMethods[index])
+  );
 }
 
 export function patternForUrl(url) {
